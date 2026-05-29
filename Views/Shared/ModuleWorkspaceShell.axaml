@@ -1,0 +1,265 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:ShockUI.Converters"
+             xmlns:app="using:ShockUI"
+             x:Class="ShockUI.Views.Shared.ModuleWorkspaceShell"
+             x:Name="Root">
+
+    <UserControl.Styles>
+        <Style Selector="Border.badge-green">
+            <Setter Property="Background" Value="#14532D"/>
+            <Setter Property="BorderBrush" Value="#166534"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style Selector="Border.badge-orange">
+            <Setter Property="Background" Value="#7C2D12"/>
+            <Setter Property="BorderBrush" Value="#9A3412"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style Selector="Border.badge-red">
+            <Setter Property="Background" Value="#7F1D1D"/>
+            <Setter Property="BorderBrush" Value="#991B1B"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style Selector="Border.badge-blue">
+            <Setter Property="Background" Value="#1E3A5F"/>
+            <Setter Property="BorderBrush" Value="#2563EB"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!--
+    Root Grid:
+    Row 0 — header bar          (auto)
+    Row 1 — banner              (auto, hidden when not needed)
+    Row 2 — main content area   (* = fills all remaining window height)
+    -->
+    <Grid RowDefinitions="Auto,Auto,*" Margin="8">
+
+        <!-- ── Header bar ── -->
+        <Border Grid.Row="0"
+                Background="#08142A"
+                BorderBrush="#27476F"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="10"
+                Margin="0,0,0,6">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{Binding Title, ElementName=Root}"
+                                   FontSize="18" FontWeight="Bold" Foreground="#F8FAFC"/>
+                        <Border Classes="badge-green">
+                            <TextBlock Text="Ready" FontSize="11" FontWeight="SemiBold" Foreground="#DCFCE7"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Subtitle, ElementName=Root}"
+                               FontSize="11" Foreground="#93C5FD"/>
+                </StackPanel>
+
+                <ContentPresenter Grid.Column="1"
+                                  Content="{Binding HeaderActions, ElementName=Root}"/>
+
+                <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                      ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                    <WrapPanel Grid.Column="0" Orientation="Horizontal">
+                        <Border Classes="badge-blue" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding ConnectionText, ElementName=Root}"
+                                       FontSize="11" Foreground="#E2E8F0"/>
+                        </Border>
+                        <Border Classes="badge-orange" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding ModeText, ElementName=Root}"
+                                       FontSize="11" Foreground="#FFEDD5"/>
+                        </Border>
+                        <Border Classes="badge-red" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding CalibrationText, ElementName=Root}"
+                                       FontSize="11" Foreground="#FEE2E2"/>
+                        </Border>
+                    </WrapPanel>
+
+                    <!--
+                    Toggle for the video feed area. Only visible when maintenance
+                    is unlocked. Caption flips between Show/Hide based on state.
+                    -->
+                    <Button Grid.Column="1"
+                            Padding="10,4" FontSize="11" FontWeight="SemiBold"
+                            Background="#1E3A5F" BorderBrush="#2563EB"
+                            BorderThickness="1" Foreground="#E2E8F0"
+                            Command="{Binding ToggleVideoFeedCommand, ElementName=Root}"
+                            IsVisible="{Binding Path=IsMaintenanceUnlocked,
+                            Source={x:Static app:AppState.Current}}"
+                            ToolTip.Tip="Show or hide the live video feed area">
+                        <TextBlock Text="{Binding VideoToggleText, ElementName=Root}"/>
+                    </Button>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ── Banner ── -->
+        <Border Grid.Row="1"
+                Background="{Binding BannerBackground, ElementName=Root}"
+                BorderBrush="{Binding BannerBorderBrush, ElementName=Root}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="10,8"
+                Margin="0,0,0,6"
+                IsVisible="{Binding IsBannerVisible, ElementName=Root}">
+            <TextBlock Text="{Binding BannerText, ElementName=Root}"
+                       Foreground="{Binding BannerForeground, ElementName=Root}"
+                       TextWrapping="Wrap"/>
+        </Border>
+
+        <!-- ── Main content (fills remaining height) ──
+        Layout strategy:
+        Left column (1*)  — controls panel, expands to fill all extra width
+        Right column (Auto) — sized to its widest child
+        When video is ON  → video Border at 520 wide → right ≈ 520
+        When video is OFF → video collapses, only Log/Trace remain → right ≈ 380
+        The left column (1*) consumes everything else, so when video is hidden, controls
+        reflow to take the freed horizontal space — fewer rows on screen, less scroll.
+        -->
+        <Grid Grid.Row="2"
+              ColumnDefinitions="1*,Auto"
+              ColumnSpacing="8">
+
+            <!-- Left: module-specific controls in a ScrollViewer.
+            ClipToBounds + explicit Stretch alignment ensures the inner ScrollViewer
+            gets a bounded height from this Border (which itself takes the full
+            Grid.Row="2" * height). Without this, the ScrollViewer's measure pass
+            sees infinite available height and lets the last card get clipped by
+            the window edge instead of activating the scrollbar all the way. -->
+            <Border Grid.Column="0"
+                    Background="#08142A"
+                    BorderBrush="#27476F"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    ClipToBounds="True"
+                    VerticalAlignment="Stretch">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              VerticalAlignment="Stretch"
+                              Padding="12,12,12,32">
+                    <!--
+                    ContentPresenter margin keeps cards away from the ScrollViewer's
+                    right scrollbar track, so the rightmost card's rounded border isn't
+                    obscured. The generous bottom margin (60px) ensures the last card
+                    (often a tall IBIT panel) has clear room below its bottom border
+                    when scrolled to the very bottom.
+                    -->
+                    <ContentPresenter Content="{Binding LeftContent, ElementName=Root}"
+                                      Margin="0,0,8,60"/>
+                </ScrollViewer>
+            </Border>
+
+            <!--
+            Right column: Workspace Log + Raw Packet Trace are always shown,
+            pinned at their compact fixed heights. Video area is gated by
+            IsVideoFeedVisible — when off, its row collapses to 0 and the
+            right column shrinks horizontally, letting the left controls panel
+            expand into the freed width.
+            -->
+            <Grid Grid.Column="1" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <!-- Video row: Auto — collapses to 0 when its Border IsVisible=false -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- Log row: fixed -->
+                    <RowDefinition Height="200"/>
+                    <!-- Trace row: fixed -->
+                    <RowDefinition Height="170"/>
+                    <!-- Extra slot (e.g. SIRS Decoded Frame panel) — Auto so it
+                    collapses to 0 when the module doesn't provide content -->
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!--
+                Video panel — fixed 520x320 when shown. Width drives the right column's
+                horizontal size when video is on.
+                -->
+                <Border Grid.Row="0"
+                        Background="#000000"
+                        BorderBrush="#27476F"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Width="520" Height="320"
+                        IsVisible="{Binding IsVideoFeedVisible, ElementName=Root}">
+                    <Panel>
+                        <StackPanel VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Spacing="10"
+                                    IsVisible="{Binding VideoContent, ElementName=Root,
+                                    Converter={x:Static conv:ObjectConverters.IsNull}}">
+                            <Border Background="#0D1B34"
+                                    BorderBrush="#1E3A5F"
+                                    BorderThickness="2"
+                                    CornerRadius="40"
+                                    Width="64" Height="64"
+                                    HorizontalAlignment="Center">
+                                <TextBlock Text="📷" FontSize="26"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Video Feed" Foreground="#E2E8F0"
+                                       FontSize="15" FontWeight="Bold"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Pipeline not connected"
+                                       Foreground="#64748B" FontSize="12"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Awaiting video pipeline implementation"
+                                       Foreground="#334155" FontSize="11"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <ContentPresenter Content="{Binding VideoContent, ElementName=Root}"
+                                          IsVisible="{Binding VideoContent, ElementName=Root,
+                                          Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                    </Panel>
+                </Border>
+
+                <!-- Workspace Log — fixed compact width so right column shrinks when video hides -->
+                <Border Grid.Row="1"
+                        Background="#0B1730"
+                        BorderBrush="#27476F"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Width="520">
+                    <ContentPresenter Content="{Binding RightTopContent, ElementName=Root}"/>
+                </Border>
+
+                <!-- Raw Packet Trace — same fixed width as log for visual alignment -->
+                <Border Grid.Row="2"
+                        Background="#0B1730"
+                        BorderBrush="#27476F"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Width="520">
+                    <ContentPresenter Content="{Binding RightBottomContent, ElementName=Root}"/>
+                </Border>
+
+                <!--
+                Optional 4th slot: SIRS / EOS / AA55 Decoded Frame panel. Only
+                rendered when the module supplies content for RightExtraContent;
+                otherwise the row stays Auto-sized to 0.
+                -->
+                <Border Grid.Row="3"
+                        Background="#0B1730"
+                        BorderBrush="#27476F"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Width="520"
+                        IsVisible="{Binding RightExtraContent, ElementName=Root,
+                        Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+                    <ContentPresenter Content="{Binding RightExtraContent, ElementName=Root}"/>
+                </Border>
+
+            </Grid>
+        </Grid>
+
+    </Grid>
+</UserControl>

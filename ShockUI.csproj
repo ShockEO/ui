@@ -1,0 +1,77 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+
+		<!--
+      Build versioning. Bump <Version> for releases; BuildTime is
+      regenerated automatically on every build (see ItemGroup below)
+      and surfaced at runtime via ShockUI.BuildInfo.
+    -->
+		<Version>0.9.0</Version>
+	</PropertyGroup>
+
+	<!--
+    Bake the current build timestamp into the assembly as an
+    AssemblyMetadata attribute. MSBuild property functions resolve at
+    build time, so each build refreshes this value automatically.
+  -->
+	<ItemGroup>
+		<AssemblyMetadata Include="BuildTime"
+						  Value="$([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm'))" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<AvaloniaResource Include="Assets\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="mwir_fov_positions.json" />
+		<None Remove="swir_fov_positions.json" />
+		<None Remove="visnir_fov_positions.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="mwir_fov_positions.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="swir_fov_positions.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="visnir_fov_positions.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia" Version="11.3.11" />
+		<PackageReference Include="Avalonia.Desktop" Version="11.3.11" />
+		<PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
+		<PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
+		<!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
+		<PackageReference Include="Avalonia.Diagnostics" Version="11.3.11">
+			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
+		<PackageReference Include="System.IO.Ports" Version="10.0.5" />
+		<!--
+      System.Management provides the WMI bindings used by
+      SerialPortDiscovery to get friendly device names. Windows-only
+      at runtime — calls are wrapped in try/catch so non-Windows
+      hosts fall through to a bare port-name list.
+    -->
+		<PackageReference Include="System.Management" Version="8.0.0" />
+		<!--
+      Vortice.XInput provides the XInput bindings used by
+      XboxControllerService for game-controller input. Windows-only —
+      throws DllNotFoundException at runtime on Linux/macOS, so
+      XboxControllerService init is wrapped in try/catch with an OS
+      check (see Services/App/XboxControllerService.cs).
+    -->
+		<PackageReference Include="Vortice.XInput" Version="3.6.2" />
+	</ItemGroup>
+</Project>

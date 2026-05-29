@@ -1,0 +1,591 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:conv="using:ShockUI.Converters"
+             xmlns:app="using:ShockUI"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShockUI.ViewModels.Modules"
+             xmlns:shared="using:ShockUI.Views.Shared"
+             xmlns:prim="using:Avalonia.Controls.Primitives"
+             x:Class="ShockUI.Views.Modules.SwirControllerView"
+             x:DataType="vm:SwirControllerViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.panel-card">
+            <Setter Property="Background" Value="#0D1B34"/>
+            <Setter Property="BorderBrush" Value="#27476F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+
+        <Style Selector="Border.sub-card">
+            <Setter Property="Background" Value="#10203C"/>
+            <Setter Property="BorderBrush" Value="#27476F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+
+        <Style Selector="Button.console">
+            <Setter Property="Background" Value="#223250"/>
+            <Setter Property="Foreground" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#375A89"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style Selector="Button.console:disabled">
+            <Setter Property="Opacity" Value="0.45"/>
+        </Style>
+    </UserControl.Styles>
+
+    <shared:ModuleWorkspaceShell Title="{Binding ModuleTitle}"
+                                 Subtitle="ICD optical module workspace"
+                                 ConnectionText="{Binding ConnectionStateText}"
+                                 ModeText="{Binding ModeStateText}"
+                                 CalibrationText="{Binding CalibrationStateText}"
+                                 IsBannerVisible="{Binding IsBannerVisible}"
+                                 BannerText="{Binding BannerText}"
+                                 BannerBackground="{Binding BannerBackground}"
+                                 BannerBorderBrush="{Binding BannerBorderBrush}"
+                                 BannerForeground="{Binding BannerForeground}">
+
+        <shared:ModuleWorkspaceShell.HeaderActions>
+            <WrapPanel Orientation="Horizontal">
+                <Button Classes="console"
+                        Content="Simulation"
+                        Command="{Binding ToggleSimulationModeCommand}"
+                        Margin="0,0,8,0"/>
+                <Button Classes="console"
+                        Content="Refresh Ports"
+                        Command="{Binding RefreshPortsCommand}"
+                        Margin="0,0,8,0"/>
+                <Button Classes="console"
+                        Content="Dismiss Banner"
+                        Command="{Binding DismissBannerCommand}"
+                        IsEnabled="{Binding IsBannerVisible}"/>
+            </WrapPanel>
+        </shared:ModuleWorkspaceShell.HeaderActions>
+
+        <shared:ModuleWorkspaceShell.LeftContent>
+            <StackPanel>
+                <!-- Two-column layout (video hidden) — alternating split for balance -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8"
+                      IsVisible="{Binding !$parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
+                    <StackPanel Grid.Column="0" Spacing="8">
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Connection"
+                                           FontSize="12"
+                                           FontWeight="Bold"
+                                           Foreground="#E2E8F0"/>
+
+                                <TextBlock Text="{Binding IsSimulationMode, StringFormat=Simulation: {0}}"
+                                           Foreground="#CBD5E1"/>
+
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="console"
+                                            Content="Connect"
+                                            Command="{Binding ConnectCommand}"
+                                            IsEnabled="{Binding CanConnect}"
+                                            Margin="0,0,6,6"/>
+                                    <Button Classes="console"
+                                            Content="Disconnect"
+                                            Command="{Binding DisconnectCommand}"
+                                            IsEnabled="{Binding CanDisconnect}"
+                                            Margin="0,0,6,6"/>
+                                    <Button Classes="console"
+                                            Content="⚙ Port Settings"
+                                            Command="{Binding OpenPortSettingsCommand}"
+                                            ToolTip.Tip="Configure baud rate, parity, timeouts, and auto-reconnect"
+                                            Margin="0,0,6,6"/>
+                                </WrapPanel>
+
+                                <TextBlock Text="Port"
+                                           FontSize="11"
+                                           Foreground="#93C5FD"/>
+                                <ComboBox ItemsSource="{Binding AvailablePorts}"
+                                          SelectedItem="{Binding SelectedPort}"
+                                          Width="200" IsVisible="{Binding IsUartTransport}"/>
+                                <Border Background="#08142A" BorderBrush="#27476F" BorderThickness="1"
+                                        CornerRadius="4" Padding="8,4"
+                                        IsVisible="{Binding IsUdpTransport}">
+                                    <TextBlock Text="{Binding TransportSummary}"
+                                               FontFamily="Consolas" Foreground="#E2E8F0"/>
+                                </Border>
+
+                                <TextBlock Text="{Binding StatusText}" Foreground="#CBD5E1"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="State Control"
+                                           FontSize="12"
+                                           FontWeight="Bold"
+                                           Foreground="#E2E8F0"/>
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="console" Content="Get Current" Command="{Binding GetCurrentStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                                    <Button Classes="console" Content="Operational" Command="{Binding SetOperationalStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                                    <Button Classes="console" Content="Maintenance" Command="{Binding SetMaintenanceStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                                    <Button Classes="console" Content="BIT" Command="{Binding SetBitStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="FOV Control" FontSize="12" FontWeight="Bold" Foreground="#E2E8F0"/>
+                                <TextBlock Text="{Binding CurrentFovText, StringFormat=Current: {0}}"
+                                           Foreground="#93C5FD" FontSize="11"/>
+
+                                <WrapPanel Orientation="Horizontal">
+                                    <ComboBox ItemsSource="{Binding FovOptions}"
+                                              SelectedItem="{Binding SelectedFov}"
+                                              Width="140"/>
+                                    <Button Classes="console" Content="Go To"
+                                            Command="{Binding GoToFovCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"
+                                            Margin="8,0,0,0"/>
+                                </WrapPanel>
+
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="console" Content="Get Feedback"
+                                            Command="{Binding RequestFovFeedbackCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"
+                                            Margin="0,0,6,0"/>
+                                    <Button Classes="console" Content="Stop"
+                                            Command="{Binding StopFovCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"/>
+                                </WrapPanel>
+
+                                <TextBlock Text="{Binding FovSummary}"
+                                           Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="8">
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Summary"
+                                           FontSize="12"
+                                           FontWeight="Bold"
+                                           Foreground="#E2E8F0"/>
+
+                                <TextBlock Text="{Binding CurrentState, StringFormat=Current State: {0}}" Foreground="#CBD5E1"/>
+                                <TextBlock Text="{Binding StateReached, StringFormat=Target Reached: {0}}" Foreground="#CBD5E1"/>
+                                <TextBlock Text="{Binding LastCommandSummary, StringFormat=Last Command: {0}}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding LastProtocolSummary, StringFormat=Protocol: {0}}" Foreground="#CBD5E1"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="General Status / PBIT"
+                                           FontSize="12"
+                                           FontWeight="Bold"
+                                           Foreground="#E2E8F0"/>
+                                <Button Classes="console"
+                                        Content="Request General Status"
+                                        Command="{Binding RequestGeneralStatusCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"
+                                        Width="180"/>
+                                <TextBlock Text="{Binding GeneralStatusSummary}" Foreground="#CBD5E1"/>
+                                <TextBlock Text="{Binding AlarmSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                <Border Classes="sub-card">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding ControllerPbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Zg1PbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Zg2PbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding TemperaturePbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Focus Control" FontSize="12" FontWeight="Bold" Foreground="#E2E8F0"/>
+
+                                <!-- Current feedback -->
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding FocusMovementText, StringFormat=Movement: {0}}"
+                                               Foreground="#93C5FD" FontSize="11"/>
+                                    <TextBlock Text="{Binding CurrentFocusPosition, StringFormat=Position: {0}}"
+                                               Foreground="#93C5FD" FontSize="11"/>
+                                    <TextBlock Text="{Binding CurrentFocusSpeed, StringFormat=Speed: {0}}"
+                                               Foreground="#93C5FD" FontSize="11"/>
+                                </StackPanel>
+
+                                <!-- Set Position -->
+                                <WrapPanel Orientation="Horizontal">
+                                    <TextBox Text="{Binding FocusTargetPosition}" Width="130"
+                                             Watermark="Position"/>
+                                    <Button Classes="console" Content="Set Position"
+                                            Command="{Binding SetFocusPositionCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"
+                                            Margin="8,0,0,0"/>
+                                </WrapPanel>
+
+                                <!-- Set Speed -->
+                                <WrapPanel Orientation="Horizontal">
+                                    <TextBox Text="{Binding FocusTargetSpeed}" Width="130"
+                                             Watermark="Speed"/>
+                                    <Button Classes="console" Content="Set Speed"
+                                            Command="{Binding SetFocusSpeedCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"
+                                            Margin="8,0,0,0"/>
+                                </WrapPanel>
+
+                                <!-- Infinity -->
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="console" Content="Move to Infinity"
+                                            Command="{Binding MoveFocusToInfinityCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"/>
+                                </WrapPanel>
+
+                                <!-- Get / Stop -->
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="console" Content="Get Feedback"
+                                            Command="{Binding RequestFocusFeedbackCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"
+                                            Margin="0,0,6,0"/>
+                                    <Button Classes="console" Content="Stop"
+                                            Command="{Binding StopFocusCommand}"
+                                            IsEnabled="{Binding CanSendCommands}"/>
+                                </WrapPanel>
+
+                                <TextBlock Text="{Binding FocusSummary}"
+                                           Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                <!-- Single-column layout (video shown) -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding $parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Connection"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       Foreground="#E2E8F0"/>
+
+                            <TextBlock Text="{Binding IsSimulationMode, StringFormat=Simulation: {0}}"
+                                       Foreground="#CBD5E1"/>
+
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="console"
+                                        Content="Connect"
+                                        Command="{Binding ConnectCommand}"
+                                        IsEnabled="{Binding CanConnect}"
+                                        Margin="0,0,6,6"/>
+                                <Button Classes="console"
+                                        Content="Disconnect"
+                                        Command="{Binding DisconnectCommand}"
+                                        IsEnabled="{Binding CanDisconnect}"
+                                        Margin="0,0,6,6"/>
+                                <Button Classes="console"
+                                        Content="⚙ Port Settings"
+                                        Command="{Binding OpenPortSettingsCommand}"
+                                        ToolTip.Tip="Configure baud rate, parity, timeouts, and auto-reconnect"
+                                        Margin="0,0,6,6"/>
+                            </WrapPanel>
+
+                            <TextBlock Text="Port"
+                                       FontSize="11"
+                                       Foreground="#93C5FD"/>
+                            <ComboBox ItemsSource="{Binding AvailablePorts}"
+                                      SelectedItem="{Binding SelectedPort}"
+                                      Width="200" IsVisible="{Binding IsUartTransport}"/>
+                            <Border Background="#08142A" BorderBrush="#27476F" BorderThickness="1"
+                                    CornerRadius="4" Padding="8,4"
+                                    IsVisible="{Binding IsUdpTransport}">
+                                <TextBlock Text="{Binding TransportSummary}"
+                                           FontFamily="Consolas" Foreground="#E2E8F0"/>
+                            </Border>
+
+                            <TextBlock Text="{Binding StatusText}" Foreground="#CBD5E1"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Summary"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       Foreground="#E2E8F0"/>
+
+                            <TextBlock Text="{Binding CurrentState, StringFormat=Current State: {0}}" Foreground="#CBD5E1"/>
+                            <TextBlock Text="{Binding StateReached, StringFormat=Target Reached: {0}}" Foreground="#CBD5E1"/>
+                            <TextBlock Text="{Binding LastCommandSummary, StringFormat=Last Command: {0}}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding LastProtocolSummary, StringFormat=Protocol: {0}}" Foreground="#CBD5E1"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="State Control"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       Foreground="#E2E8F0"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="console" Content="Get Current" Command="{Binding GetCurrentStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                                <Button Classes="console" Content="Operational" Command="{Binding SetOperationalStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                                <Button Classes="console" Content="Maintenance" Command="{Binding SetMaintenanceStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                                <Button Classes="console" Content="BIT" Command="{Binding SetBitStateCommand}" IsEnabled="{Binding CanSendCommands}" Margin="0,0,6,6"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="General Status / PBIT"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       Foreground="#E2E8F0"/>
+                            <Button Classes="console"
+                                    Content="Request General Status"
+                                    Command="{Binding RequestGeneralStatusCommand}"
+                                    IsEnabled="{Binding CanSendCommands}"
+                                    Width="180"/>
+                            <TextBlock Text="{Binding GeneralStatusSummary}" Foreground="#CBD5E1"/>
+                            <TextBlock Text="{Binding AlarmSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                            <Border Classes="sub-card">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{Binding ControllerPbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Zg1PbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Zg2PbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding TemperaturePbitSummary}" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="FOV Control" FontSize="12" FontWeight="Bold" Foreground="#E2E8F0"/>
+                            <TextBlock Text="{Binding CurrentFovText, StringFormat=Current: {0}}"
+                                       Foreground="#93C5FD" FontSize="11"/>
+
+                            <WrapPanel Orientation="Horizontal">
+                                <ComboBox ItemsSource="{Binding FovOptions}"
+                                          SelectedItem="{Binding SelectedFov}"
+                                          Width="140"/>
+                                <Button Classes="console" Content="Go To"
+                                        Command="{Binding GoToFovCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"
+                                        Margin="8,0,0,0"/>
+                            </WrapPanel>
+
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="console" Content="Get Feedback"
+                                        Command="{Binding RequestFovFeedbackCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"
+                                        Margin="0,0,6,0"/>
+                                <Button Classes="console" Content="Stop"
+                                        Command="{Binding StopFovCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"/>
+                            </WrapPanel>
+
+                            <TextBlock Text="{Binding FovSummary}"
+                                       Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Focus Control" FontSize="12" FontWeight="Bold" Foreground="#E2E8F0"/>
+
+                            <!-- Current feedback -->
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding FocusMovementText, StringFormat=Movement: {0}}"
+                                           Foreground="#93C5FD" FontSize="11"/>
+                                <TextBlock Text="{Binding CurrentFocusPosition, StringFormat=Position: {0}}"
+                                           Foreground="#93C5FD" FontSize="11"/>
+                                <TextBlock Text="{Binding CurrentFocusSpeed, StringFormat=Speed: {0}}"
+                                           Foreground="#93C5FD" FontSize="11"/>
+                            </StackPanel>
+
+                            <!-- Set Position -->
+                            <WrapPanel Orientation="Horizontal">
+                                <TextBox Text="{Binding FocusTargetPosition}" Width="130"
+                                         Watermark="Position"/>
+                                <Button Classes="console" Content="Set Position"
+                                        Command="{Binding SetFocusPositionCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"
+                                        Margin="8,0,0,0"/>
+                            </WrapPanel>
+
+                            <!-- Set Speed -->
+                            <WrapPanel Orientation="Horizontal">
+                                <TextBox Text="{Binding FocusTargetSpeed}" Width="130"
+                                         Watermark="Speed"/>
+                                <Button Classes="console" Content="Set Speed"
+                                        Command="{Binding SetFocusSpeedCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"
+                                        Margin="8,0,0,0"/>
+                            </WrapPanel>
+
+                            <!-- Infinity -->
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="console" Content="Move to Infinity"
+                                        Command="{Binding MoveFocusToInfinityCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"/>
+                            </WrapPanel>
+
+                            <!-- Get / Stop -->
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="console" Content="Get Feedback"
+                                        Command="{Binding RequestFocusFeedbackCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"
+                                        Margin="0,0,6,0"/>
+                                <Button Classes="console" Content="Stop"
+                                        Command="{Binding StopFocusCommand}"
+                                        IsEnabled="{Binding CanSendCommands}"/>
+                            </WrapPanel>
+
+                            <TextBlock Text="{Binding FocusSummary}"
+                                       Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </shared:ModuleWorkspaceShell.LeftContent>
+
+        <shared:ModuleWorkspaceShell.RightTopContent>
+            <Border Background="#0B1730"
+                    BorderBrush="#27476F"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="8">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
+                    <StackPanel Grid.Row="0" Spacing="2">
+                        <TextBlock Text="Workspace"
+                                   FontSize="13"
+                                   FontWeight="Bold"
+                                   Foreground="#E2E8F0"/>
+                        <TextBlock Text="Live command / response console"
+                                   FontSize="11"
+                                   Foreground="#93C5FD"/>
+                    </StackPanel>
+
+                    <Border Grid.Row="1"
+                            Background="#020617"
+                            BorderBrush="#334155"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding LogLines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding .}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="12"
+                                                   Foreground="#E2E8F0"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+
+                    <WrapPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal">
+                        <Button Classes="console" Content="Export Log" Command="{Binding ExportLogCommand}" IsEnabled="{Binding HasLogLines}" Margin="0,0,6,0"/>
+                        <Button Classes="console" Content="Clear" Command="{Binding ClearLogCommand}"/>
+                    </WrapPanel>
+                </Grid>
+            </Border>
+        </shared:ModuleWorkspaceShell.RightTopContent>
+
+        <shared:ModuleWorkspaceShell.RightBottomContent>
+            <Border Background="#0B1730"
+                    BorderBrush="#27476F"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="8">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
+                    <StackPanel Grid.Row="0" Spacing="2">
+                        <TextBlock Text="Raw Packet Trace"
+                                   FontSize="13"
+                                   FontWeight="Bold"
+                                   Foreground="#E2E8F0"/>
+                        <TextBlock Text="TX / RX protocol frames in hex"
+                                   FontSize="11"
+                                   Foreground="#93C5FD"/>
+                    </StackPanel>
+
+                    <Border Grid.Row="1"
+                            Background="#020617"
+                            BorderBrush="#334155"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding PacketTraceLines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding .}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#E2E8F0"
+                                                   TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+
+                    <WrapPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal">
+                        <Button Classes="console" Content="Export Trace" Command="{Binding ExportTraceCommand}" IsEnabled="{Binding HasTraceLines}" Margin="0,0,6,0"/>
+                        <Button Classes="console" Content="Clear Trace" Command="{Binding ClearTraceCommand}"/>
+                    </WrapPanel>
+                </Grid>
+            </Border>
+        </shared:ModuleWorkspaceShell.RightBottomContent>
+
+
+        <!--
+        Decoded Frame panel — shows a field-by-field breakdown of the most
+        recent TX/RX frame seen on the wire.
+        -->
+        <shared:ModuleWorkspaceShell.RightExtraContent>
+            <Border Background="#0B1730" BorderBrush="#27476F" BorderThickness="1"
+                    CornerRadius="8" Padding="8">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="6">
+                    <StackPanel Grid.Row="0" Spacing="2">
+                        <TextBlock Text="Decoded Frame" FontSize="13" FontWeight="Bold"
+                                   Foreground="#E2E8F0"/>
+                        <TextBlock Text="{Binding LastDecodedFrameHeader}"
+                                   FontSize="11" Foreground="#93C5FD"/>
+                    </StackPanel>
+
+                    <Border Grid.Row="1"
+                            Background="#020617" BorderBrush="#334155"
+                            BorderThickness="1" CornerRadius="4" Padding="6"
+                            MaxHeight="260">
+                        <ScrollViewer VerticalScrollBarVisibility="Visible"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding LastDecodedFrameRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="50,110,70,*" ColumnSpacing="6">
+                                            <TextBlock Grid.Column="0" Text="{Binding Position}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       Foreground="#64748B"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Label}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       FontWeight="SemiBold" Foreground="#93C5FD"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding HexValue}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       Foreground="#FBBF24"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Meaning}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       Foreground="#94A3B8" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Button Grid.Row="2" Classes="cmd" Content="Clear Decoded"
+                            Command="{Binding ClearDecodedFrameCommand}"
+                            HorizontalAlignment="Right"/>
+                </Grid>
+            </Border>
+        </shared:ModuleWorkspaceShell.RightExtraContent>
+
+    </shared:ModuleWorkspaceShell>
+</UserControl>

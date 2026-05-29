@@ -1,0 +1,665 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:conv="using:ShockUI.Converters"
+             xmlns:app="using:ShockUI"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShockUI.ViewModels.Modules"
+             xmlns:shared="using:ShockUI.Views.Shared"
+             xmlns:prim="using:Avalonia.Controls.Primitives"
+             x:Class="ShockUI.Views.Modules.CameraControllerView"
+             x:DataType="vm:CameraControllerViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.panel-card">
+            <Setter Property="Background" Value="#0D1B34"/>
+            <Setter Property="BorderBrush" Value="#27476F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style Selector="Border.sub-card">
+            <Setter Property="Background" Value="#10203C"/>
+            <Setter Property="BorderBrush" Value="#27476F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+        <Style Selector="Button.cmd">
+            <Setter Property="Background" Value="#223250"/>
+            <Setter Property="Foreground" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#375A89"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+        </Style>
+        <Style Selector="Button.cmd:disabled">
+            <Setter Property="Opacity" Value="0.4"/>
+        </Style>
+        <Style Selector="Button.cmd-danger">
+            <Setter Property="Background" Value="#7C2D12"/>
+            <Setter Property="Foreground" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#9A3412"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#93C5FD"/>
+        </Style>
+        <Style Selector="TextBlock.value">
+            <Setter Property="Foreground" Value="#E2E8F0"/>
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#E2E8F0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <shared:ModuleWorkspaceShell
+    Title="{Binding ModuleTitle}"
+    Subtitle="MWIR Zoom Motor Board"
+    ConnectionText="{Binding ConnectionStateText}"
+    ModeText="{Binding ModeStateText}"
+    CalibrationText="{Binding CalibrationStateText}"
+    IsBannerVisible="{Binding IsBannerVisible}"
+    BannerText="{Binding BannerText}"
+    BannerBackground="{Binding BannerBackground}"
+    BannerBorderBrush="{Binding BannerBorderBrush}"
+    BannerForeground="{Binding BannerForeground}">
+
+        <!-- Header actions -->
+        <shared:ModuleWorkspaceShell.HeaderActions>
+            <WrapPanel Orientation="Horizontal">
+                <Button Classes="cmd" Content="Simulation"
+                        Command="{Binding ToggleSimulationModeCommand}" Margin="0,0,6,0"/>
+                <Button Classes="cmd" Content="Calibrate"
+                        Command="{Binding CalibrateCommand}"
+                        IsEnabled="{Binding CanCalibrate}"/>
+            </WrapPanel>
+        </shared:ModuleWorkspaceShell.HeaderActions>
+
+        <!-- LEFT PANEL -->
+        <shared:ModuleWorkspaceShell.LeftContent>
+            <StackPanel>
+                <!-- Two-column layout (video hidden) — alternating split for balance -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8"
+                      IsVisible="{Binding !$parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
+                    <StackPanel Grid.Column="0" Spacing="8">
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="section" Text="Connection"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                    <StackPanel Grid.Column="0" Spacing="4">
+                                        <TextBlock Classes="label" Text="Serial Port" IsVisible="{Binding IsUartTransport}"/>
+                                        <ComboBox ItemsSource="{Binding AvailablePorts}"
+                                                  SelectedItem="{Binding SelectedPort}" IsVisible="{Binding IsUartTransport}"/>
+                                        <Border Background="#08142A" BorderBrush="#27476F" BorderThickness="1"
+                                                CornerRadius="4" Padding="8,4"
+                                                IsVisible="{Binding IsUdpTransport}">
+                                            <TextBlock Text="{Binding TransportSummary}"
+                                                       FontFamily="Consolas" Foreground="#E2E8F0"/>
+                                        </Border>
+                                        <WrapPanel Orientation="Horizontal">
+                                            <Button Classes="cmd" Content="Refresh" Command="{Binding RefreshPortsCommand}" IsVisible="{Binding IsUartTransport}" Margin="0,0,4,0"/>
+                                            <Button Classes="cmd" Content="Connect"
+                                                    Command="{Binding ConnectCommand}"
+                                                    IsEnabled="{Binding !IsConnected}" Margin="0,0,4,0"/>
+                                            <Button Classes="cmd" Content="Disconnect"
+                                                    Command="{Binding DisconnectCommand}"
+                                                    IsEnabled="{Binding IsConnected}" Margin="0,0,4,0"/>
+                                            <Button Classes="cmd" Content="⚙ Port Settings"
+                                                    Command="{Binding OpenPortSettingsCommand}"
+                                                    ToolTip.Tip="Configure baud rate, parity, timeouts, and auto-reconnect"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Classes="label" Text="Status"/>
+                                        <TextBlock Classes="value" Text="{Binding StatusText}" TextWrapping="Wrap"/>
+                                        <TextBlock Classes="label" Text="Camera"/>
+                                        <TextBlock Classes="value" Text="{Binding DetectedCamera}"/>
+                                        <TextBlock Classes="label" Text="Sent / Received"/>
+                                        <TextBlock Classes="value"
+                                                   Text="{Binding SentCount, StringFormat={}{0}}">
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="section" Text="FOV Preset"/>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <ComboBox Grid.Column="0"
+                                              ItemsSource="{Binding FovOptions}"
+                                              SelectedItem="{Binding SelectedFov}"/>
+                                    <Button Grid.Column="1" Classes="cmd" Content="Apply FOV"
+                                            Command="{Binding ApplyFovCommand}"
+                                            IsEnabled="{Binding CanOperate}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="section" Text="Speed Control"/>
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="4" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                                    <!-- ZG1 -->
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="ZG1" VerticalAlignment="Center" MinWidth="28"/>
+                                    <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding SpeedZg1}" Minimum="1" Maximum="10000"/>
+                                    <Button Grid.Row="0" Grid.Column="2" Classes="cmd" Content="◀"
+                                            Command="{Binding SpeedZg1NegativeCommand}" IsEnabled="{Binding CanMove}" Margin="0,0,4,0"/>
+                                    <Button Grid.Row="0" Grid.Column="3" Classes="cmd" Content="▶"
+                                            Command="{Binding SpeedZg1PositiveCommand}" IsEnabled="{Binding CanMove}"/>
+                                    <!-- ZG2 -->
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="ZG2" VerticalAlignment="Center"/>
+                                    <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding SpeedZg2}" Minimum="1" Maximum="10000"/>
+                                    <Button Grid.Row="1" Grid.Column="2" Classes="cmd" Content="◀"
+                                            Command="{Binding SpeedZg2NegativeCommand}" IsEnabled="{Binding CanMove}" Margin="0,0,4,0"/>
+                                    <Button Grid.Row="1" Grid.Column="3" Classes="cmd" Content="▶"
+                                            Command="{Binding SpeedZg2PositiveCommand}" IsEnabled="{Binding CanMove}"/>
+                                    <!-- ZG3 -->
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="ZG3" VerticalAlignment="Center"
+                                               IsVisible="{Binding SupportsZg3}"/>
+                                    <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding SpeedZg3}" Minimum="1" Maximum="10000"
+                                                   IsVisible="{Binding SupportsZg3}"/>
+                                    <Button Grid.Row="2" Grid.Column="2" Classes="cmd" Content="◀"
+                                            Command="{Binding SpeedZg3NegativeCommand}"
+                                            IsEnabled="{Binding CanUseZg3}" IsVisible="{Binding SupportsZg3}" Margin="0,0,4,0"/>
+                                    <Button Grid.Row="2" Grid.Column="3" Classes="cmd" Content="▶"
+                                            Command="{Binding SpeedZg3PositiveCommand}"
+                                            IsEnabled="{Binding CanUseZg3}" IsVisible="{Binding SupportsZg3}"/>
+                                </Grid>
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="cmd" Content="Stop ZG1" Command="{Binding StopZg1Command}"
+                                            IsEnabled="{Binding CanMove}" Margin="0,0,6,0"/>
+                                    <Button Classes="cmd" Content="Stop ZG2" Command="{Binding StopZg2Command}"
+                                            IsEnabled="{Binding CanMove}" Margin="0,0,6,0"/>
+                                    <Button Classes="cmd" Content="Stop ZG3" Command="{Binding StopZg3Command}"
+                                            IsEnabled="{Binding CanUseZg3}" IsVisible="{Binding SupportsZg3}"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="section" Text="Data Logger"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                    <StackPanel Grid.Column="0" Spacing="4">
+                                        <TextBlock Classes="label" Text="Status"/>
+                                        <TextBlock Classes="value" Text="{Binding LoggerStatus}"/>
+                                        <TextBlock Classes="label" Text="Points Stored"/>
+                                        <TextBlock Classes="value" Text="{Binding LoggerExpectedCount}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Classes="label" Text="Axis"/>
+                                        <ComboBox SelectedIndex="{Binding SelectedLoggerAxis}">
+                                            <ComboBoxItem Content="ZG1"/>
+                                            <ComboBoxItem Content="ZG2"/>
+                                            <ComboBoxItem Content="ZG3"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Grid>
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="cmd" Content="Request Count"
+                                            Command="{Binding RequestLogCountCommand}"
+                                            IsEnabled="{Binding CanRunLogger}" Margin="0,0,4,0"/>
+                                    <Button Classes="cmd" Content="Fetch All"
+                                            Command="{Binding RequestAllLoggedDataCommand}"
+                                            IsEnabled="{Binding CanRunLogger}"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="8">
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="6">
+                                <TextBlock Classes="section" Text="Temperature"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Classes="label" Text="Sensor 1 (ZG1 Motor)"/>
+                                        <TextBlock Classes="value"
+                                                   Text="{Binding Temp1, StringFormat={}{0:F1} °C}"
+                                                   FontSize="16" FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Classes="label" Text="Sensor 2 (ZG2 Motor)"/>
+                                        <TextBlock Classes="value"
+                                                   Text="{Binding Temp2, StringFormat={}{0:F1} °C}"
+                                                   FontSize="16" FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="section" Text="Position Control"/>
+
+                                <!-- ZG1 -->
+                                <Border Classes="sub-card">
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                                        <TextBlock Classes="label" Text="ZG1 Target" Grid.Row="0" Grid.Column="0"/>
+                                        <TextBlock Classes="label" Text="ZG1 Measured" Grid.Row="0" Grid.Column="1"/>
+                                        <NumericUpDown Grid.Row="1" Grid.Column="0"
+                                                       Value="{Binding SetPos1}"
+                                                       Minimum="0" Maximum="{Binding MaxPos1}"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Classes="value"
+                                                   Text="{Binding MeasuredPos1}"
+                                                   VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                                   Text="{Binding Zg1Reached, StringFormat=Reached: {0}}"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- ZG2 -->
+                                <Border Classes="sub-card">
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                                        <TextBlock Classes="label" Text="ZG2 Target" Grid.Row="0" Grid.Column="0"/>
+                                        <TextBlock Classes="label" Text="ZG2 Measured" Grid.Row="0" Grid.Column="1"/>
+                                        <NumericUpDown Grid.Row="1" Grid.Column="0"
+                                                       Value="{Binding SetPos2}"
+                                                       Minimum="0" Maximum="{Binding MaxPos2}"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Classes="value"
+                                                   Text="{Binding MeasuredPos2}"
+                                                   VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                                   Text="{Binding Zg2Reached, StringFormat=Reached: {0}}"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- ZG3 (only if supported) -->
+                                <Border Classes="sub-card" IsVisible="{Binding SupportsZg3}">
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                                        <TextBlock Classes="label" Text="ZG3 Target" Grid.Row="0" Grid.Column="0"/>
+                                        <TextBlock Classes="label" Text="ZG3 Measured" Grid.Row="0" Grid.Column="1"/>
+                                        <NumericUpDown Grid.Row="1" Grid.Column="0"
+                                                       Value="{Binding SetPos3}"
+                                                       Minimum="0" Maximum="{Binding MaxPos3}"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Classes="value"
+                                                   Text="{Binding MeasuredPos3}"
+                                                   VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                                   Text="{Binding Zg3Reached, StringFormat=Reached: {0}}"/>
+                                    </Grid>
+                                </Border>
+
+                                <Button Classes="cmd" Content="Move to Setpoints"
+                                        Command="{Binding MoveToSetpointsCommand}"
+                                        IsEnabled="{Binding CanMove}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="panel-card" VerticalAlignment="Top">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="section" Text="Step Test"/>
+                                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                                    <StackPanel Grid.Column="0" Spacing="4">
+                                        <TextBlock Classes="label" Text="Axis"/>
+                                        <ComboBox SelectedIndex="{Binding SelectedStepAxis}">
+                                            <ComboBoxItem Content="ZG1"/>
+                                            <ComboBoxItem Content="ZG2"/>
+                                            <ComboBoxItem Content="ZG3"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Classes="label" Text="Amplitude (%)"/>
+                                        <NumericUpDown Value="{Binding StepAmplitudePercent}" Minimum="1" Maximum="100"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="4">
+                                        <TextBlock Classes="label" Text="Duration (ms)"/>
+                                        <NumericUpDown Value="{Binding StepDurationMs}" Minimum="100" Maximum="5000"/>
+                                    </StackPanel>
+                                </Grid>
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Classes="cmd" Content="Run Step"
+                                            Command="{Binding PerformStepCommand}"
+                                            IsEnabled="{Binding CanRunStepTest}" Margin="0,0,6,0"/>
+                                    <Button Classes="cmd" Content="Run Pulse"
+                                            Command="{Binding PerformPulseCommand}"
+                                            IsEnabled="{Binding CanRunStepTest}"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                <!-- Single-column layout (video shown) -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding $parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="section" Text="Connection"/>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Classes="label" Text="Serial Port" IsVisible="{Binding IsUartTransport}"/>
+                                    <ComboBox ItemsSource="{Binding AvailablePorts}"
+                                              SelectedItem="{Binding SelectedPort}" IsVisible="{Binding IsUartTransport}"/>
+                                    <Border Background="#08142A" BorderBrush="#27476F" BorderThickness="1"
+                                            CornerRadius="4" Padding="8,4"
+                                            IsVisible="{Binding IsUdpTransport}">
+                                        <TextBlock Text="{Binding TransportSummary}"
+                                                   FontFamily="Consolas" Foreground="#E2E8F0"/>
+                                    </Border>
+                                    <WrapPanel Orientation="Horizontal">
+                                        <Button Classes="cmd" Content="Refresh" Command="{Binding RefreshPortsCommand}" IsVisible="{Binding IsUartTransport}" Margin="0,0,4,0"/>
+                                        <Button Classes="cmd" Content="Connect"
+                                                Command="{Binding ConnectCommand}"
+                                                IsEnabled="{Binding !IsConnected}" Margin="0,0,4,0"/>
+                                        <Button Classes="cmd" Content="Disconnect"
+                                                Command="{Binding DisconnectCommand}"
+                                                IsEnabled="{Binding IsConnected}" Margin="0,0,4,0"/>
+                                        <Button Classes="cmd" Content="⚙ Port Settings"
+                                                Command="{Binding OpenPortSettingsCommand}"
+                                                ToolTip.Tip="Configure baud rate, parity, timeouts, and auto-reconnect"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Classes="label" Text="Status"/>
+                                    <TextBlock Classes="value" Text="{Binding StatusText}" TextWrapping="Wrap"/>
+                                    <TextBlock Classes="label" Text="Camera"/>
+                                    <TextBlock Classes="value" Text="{Binding DetectedCamera}"/>
+                                    <TextBlock Classes="label" Text="Sent / Received"/>
+                                    <TextBlock Classes="value"
+                                               Text="{Binding SentCount, StringFormat={}{0}}">
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="section" Text="Temperature"/>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Classes="label" Text="Sensor 1 (ZG1 Motor)"/>
+                                    <TextBlock Classes="value"
+                                               Text="{Binding Temp1, StringFormat={}{0:F1} °C}"
+                                               FontSize="16" FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Classes="label" Text="Sensor 2 (ZG2 Motor)"/>
+                                    <TextBlock Classes="value"
+                                               Text="{Binding Temp2, StringFormat={}{0:F1} °C}"
+                                               FontSize="16" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="section" Text="FOV Preset"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <ComboBox Grid.Column="0"
+                                          ItemsSource="{Binding FovOptions}"
+                                          SelectedItem="{Binding SelectedFov}"/>
+                                <Button Grid.Column="1" Classes="cmd" Content="Apply FOV"
+                                        Command="{Binding ApplyFovCommand}"
+                                        IsEnabled="{Binding CanOperate}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="section" Text="Position Control"/>
+
+                            <!-- ZG1 -->
+                            <Border Classes="sub-card">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                                    <TextBlock Classes="label" Text="ZG1 Target" Grid.Row="0" Grid.Column="0"/>
+                                    <TextBlock Classes="label" Text="ZG1 Measured" Grid.Row="0" Grid.Column="1"/>
+                                    <NumericUpDown Grid.Row="1" Grid.Column="0"
+                                                   Value="{Binding SetPos1}"
+                                                   Minimum="0" Maximum="{Binding MaxPos1}"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="value"
+                                               Text="{Binding MeasuredPos1}"
+                                               VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                               Text="{Binding Zg1Reached, StringFormat=Reached: {0}}"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- ZG2 -->
+                            <Border Classes="sub-card">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                                    <TextBlock Classes="label" Text="ZG2 Target" Grid.Row="0" Grid.Column="0"/>
+                                    <TextBlock Classes="label" Text="ZG2 Measured" Grid.Row="0" Grid.Column="1"/>
+                                    <NumericUpDown Grid.Row="1" Grid.Column="0"
+                                                   Value="{Binding SetPos2}"
+                                                   Minimum="0" Maximum="{Binding MaxPos2}"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="value"
+                                               Text="{Binding MeasuredPos2}"
+                                               VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                               Text="{Binding Zg2Reached, StringFormat=Reached: {0}}"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- ZG3 (only if supported) -->
+                            <Border Classes="sub-card" IsVisible="{Binding SupportsZg3}">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                                    <TextBlock Classes="label" Text="ZG3 Target" Grid.Row="0" Grid.Column="0"/>
+                                    <TextBlock Classes="label" Text="ZG3 Measured" Grid.Row="0" Grid.Column="1"/>
+                                    <NumericUpDown Grid.Row="1" Grid.Column="0"
+                                                   Value="{Binding SetPos3}"
+                                                   Minimum="0" Maximum="{Binding MaxPos3}"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="value"
+                                               Text="{Binding MeasuredPos3}"
+                                               VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="label"
+                                               Text="{Binding Zg3Reached, StringFormat=Reached: {0}}"/>
+                                </Grid>
+                            </Border>
+
+                            <Button Classes="cmd" Content="Move to Setpoints"
+                                    Command="{Binding MoveToSetpointsCommand}"
+                                    IsEnabled="{Binding CanMove}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="section" Text="Speed Control"/>
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="4" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                                <!-- ZG1 -->
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="ZG1" VerticalAlignment="Center" MinWidth="28"/>
+                                <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding SpeedZg1}" Minimum="1" Maximum="10000"/>
+                                <Button Grid.Row="0" Grid.Column="2" Classes="cmd" Content="◀"
+                                        Command="{Binding SpeedZg1NegativeCommand}" IsEnabled="{Binding CanMove}" Margin="0,0,4,0"/>
+                                <Button Grid.Row="0" Grid.Column="3" Classes="cmd" Content="▶"
+                                        Command="{Binding SpeedZg1PositiveCommand}" IsEnabled="{Binding CanMove}"/>
+                                <!-- ZG2 -->
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="ZG2" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding SpeedZg2}" Minimum="1" Maximum="10000"/>
+                                <Button Grid.Row="1" Grid.Column="2" Classes="cmd" Content="◀"
+                                        Command="{Binding SpeedZg2NegativeCommand}" IsEnabled="{Binding CanMove}" Margin="0,0,4,0"/>
+                                <Button Grid.Row="1" Grid.Column="3" Classes="cmd" Content="▶"
+                                        Command="{Binding SpeedZg2PositiveCommand}" IsEnabled="{Binding CanMove}"/>
+                                <!-- ZG3 -->
+                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="ZG3" VerticalAlignment="Center"
+                                           IsVisible="{Binding SupportsZg3}"/>
+                                <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding SpeedZg3}" Minimum="1" Maximum="10000"
+                                               IsVisible="{Binding SupportsZg3}"/>
+                                <Button Grid.Row="2" Grid.Column="2" Classes="cmd" Content="◀"
+                                        Command="{Binding SpeedZg3NegativeCommand}"
+                                        IsEnabled="{Binding CanUseZg3}" IsVisible="{Binding SupportsZg3}" Margin="0,0,4,0"/>
+                                <Button Grid.Row="2" Grid.Column="3" Classes="cmd" Content="▶"
+                                        Command="{Binding SpeedZg3PositiveCommand}"
+                                        IsEnabled="{Binding CanUseZg3}" IsVisible="{Binding SupportsZg3}"/>
+                            </Grid>
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="cmd" Content="Stop ZG1" Command="{Binding StopZg1Command}"
+                                        IsEnabled="{Binding CanMove}" Margin="0,0,6,0"/>
+                                <Button Classes="cmd" Content="Stop ZG2" Command="{Binding StopZg2Command}"
+                                        IsEnabled="{Binding CanMove}" Margin="0,0,6,0"/>
+                                <Button Classes="cmd" Content="Stop ZG3" Command="{Binding StopZg3Command}"
+                                        IsEnabled="{Binding CanUseZg3}" IsVisible="{Binding SupportsZg3}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="section" Text="Step Test"/>
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Classes="label" Text="Axis"/>
+                                    <ComboBox SelectedIndex="{Binding SelectedStepAxis}">
+                                        <ComboBoxItem Content="ZG1"/>
+                                        <ComboBoxItem Content="ZG2"/>
+                                        <ComboBoxItem Content="ZG3"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Classes="label" Text="Amplitude (%)"/>
+                                    <NumericUpDown Value="{Binding StepAmplitudePercent}" Minimum="1" Maximum="100"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="4">
+                                    <TextBlock Classes="label" Text="Duration (ms)"/>
+                                    <NumericUpDown Value="{Binding StepDurationMs}" Minimum="100" Maximum="5000"/>
+                                </StackPanel>
+                            </Grid>
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="cmd" Content="Run Step"
+                                        Command="{Binding PerformStepCommand}"
+                                        IsEnabled="{Binding CanRunStepTest}" Margin="0,0,6,0"/>
+                                <Button Classes="cmd" Content="Run Pulse"
+                                        Command="{Binding PerformPulseCommand}"
+                                        IsEnabled="{Binding CanRunStepTest}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel-card" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="section" Text="Data Logger"/>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Classes="label" Text="Status"/>
+                                    <TextBlock Classes="value" Text="{Binding LoggerStatus}"/>
+                                    <TextBlock Classes="label" Text="Points Stored"/>
+                                    <TextBlock Classes="value" Text="{Binding LoggerExpectedCount}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Classes="label" Text="Axis"/>
+                                    <ComboBox SelectedIndex="{Binding SelectedLoggerAxis}">
+                                        <ComboBoxItem Content="ZG1"/>
+                                        <ComboBoxItem Content="ZG2"/>
+                                        <ComboBoxItem Content="ZG3"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Classes="cmd" Content="Request Count"
+                                        Command="{Binding RequestLogCountCommand}"
+                                        IsEnabled="{Binding CanRunLogger}" Margin="0,0,4,0"/>
+                                <Button Classes="cmd" Content="Fetch All"
+                                        Command="{Binding RequestAllLoggedDataCommand}"
+                                        IsEnabled="{Binding CanRunLogger}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </shared:ModuleWorkspaceShell.LeftContent>
+
+        <!-- LOG -->
+        <shared:ModuleWorkspaceShell.RightTopContent>
+            <Border Background="#0B1730" BorderBrush="#27476F" BorderThickness="1" CornerRadius="8" Padding="8">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="6">
+                    <StackPanel Grid.Row="0" Spacing="1">
+                        <TextBlock Text="Workspace Log" FontSize="13" FontWeight="Bold" Foreground="#E2E8F0"/>
+                        <TextBlock Text="Command / response activity" FontSize="11" Foreground="#93C5FD"/>
+                    </StackPanel>
+                    <Border Grid.Row="1" Background="#020617" BorderBrush="#334155"
+                            BorderThickness="1" CornerRadius="4" Padding="6">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding LogLines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding .}" FontFamily="Consolas"
+                                                   FontSize="11" Foreground="#E2E8F0"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                    <Button Grid.Row="2" Classes="cmd" Content="Clear"
+                            HorizontalAlignment="Right"/>
+                </Grid>
+            </Border>
+        </shared:ModuleWorkspaceShell.RightTopContent>
+
+        <!-- PACKET TRACE -->
+        <shared:ModuleWorkspaceShell.RightBottomContent>
+            <Border Background="#0B1730" BorderBrush="#27476F" BorderThickness="1" CornerRadius="8" Padding="8">
+                <Grid RowDefinitions="Auto,*" RowSpacing="6">
+                    <StackPanel Grid.Row="0" Spacing="1">
+                        <TextBlock Text="Raw Packet Trace" FontSize="13" FontWeight="Bold" Foreground="#E2E8F0"/>
+                        <TextBlock Text="TX / RX hex bytes" FontSize="11" Foreground="#93C5FD"/>
+                    </StackPanel>
+                    <Border Grid.Row="1" Background="#020617" BorderBrush="#334155"
+                            BorderThickness="1" CornerRadius="4" Padding="6">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding PacketTrace}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Summary}" FontFamily="Consolas"
+                                                   FontSize="10" Foreground="#94A3B8" TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+        </shared:ModuleWorkspaceShell.RightBottomContent>
+
+
+        <!--
+        Decoded Frame panel — shows a field-by-field breakdown of the most
+        recent TX/RX frame seen on the wire.
+        -->
+        <shared:ModuleWorkspaceShell.RightExtraContent>
+            <Border Background="#0B1730" BorderBrush="#27476F" BorderThickness="1"
+                    CornerRadius="8" Padding="8">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="6">
+                    <StackPanel Grid.Row="0" Spacing="2">
+                        <TextBlock Text="Decoded Frame" FontSize="13" FontWeight="Bold"
+                                   Foreground="#E2E8F0"/>
+                        <TextBlock Text="{Binding LastDecodedFrameHeader}"
+                                   FontSize="11" Foreground="#93C5FD"/>
+                    </StackPanel>
+
+                    <Border Grid.Row="1"
+                            Background="#020617" BorderBrush="#334155"
+                            BorderThickness="1" CornerRadius="4" Padding="6"
+                            MaxHeight="260">
+                        <ScrollViewer VerticalScrollBarVisibility="Visible"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding LastDecodedFrameRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="50,110,70,*" ColumnSpacing="6">
+                                            <TextBlock Grid.Column="0" Text="{Binding Position}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       Foreground="#64748B"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Label}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       FontWeight="SemiBold" Foreground="#93C5FD"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding HexValue}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       Foreground="#FBBF24"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Meaning}"
+                                                       FontFamily="Consolas" FontSize="11"
+                                                       Foreground="#94A3B8" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Button Grid.Row="2" Classes="cmd" Content="Clear Decoded"
+                            Command="{Binding ClearDecodedFrameCommand}"
+                            HorizontalAlignment="Right"/>
+                </Grid>
+            </Border>
+        </shared:ModuleWorkspaceShell.RightExtraContent>
+
+    </shared:ModuleWorkspaceShell>
+</UserControl>

@@ -1,0 +1,195 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ShockUI.Views.XboxControllerVisual"
+             x:Name="Root">
+
+    <!--
+    Xbox controller visualisation. Invisible Button controls are overlaid
+    on each interactive region (sticks, face buttons, bumpers, d-pad,
+    center buttons). The Buttons handle pointer events reliably; the
+    Ellipse/Rectangle/Path shapes are pure visuals.
+    -->
+
+    <UserControl.Styles>
+        <!-- Hot-spot button: transparent fill, clickable. We restyle the
+        Button base style to remove its default border/background. -->
+        <Style Selector="Button.hotspot">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.hotspot:pointerover">
+            <Setter Property="Background" Value="#22FFFFFF"/>
+        </Style>
+        <Style Selector="Button.hotspot:pressed">
+            <Setter Property="Background" Value="#44FFFFFF"/>
+        </Style>
+        <Style Selector="Button.hotspot /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="#0B1730" BorderBrush="#27476F"
+            BorderThickness="1" CornerRadius="8" Padding="8">
+        <Viewbox MaxHeight="200">
+            <Canvas Width="280" Height="170" Name="RootCanvas" Background="#020617">
+
+                <!-- ── Visual shapes (decorative only) ────────────────────── -->
+                <Path Stroke="#94A3B8" StrokeThickness="1.5" Fill="#020617"
+                      IsHitTestVisible="False"
+                      Data="M40,40 Q20,30 20,60 Q20,110 50,130 Q70,140 90,135 L190,135
+                      Q210,140 230,130 Q260,110 260,60 Q260,30 240,40
+                      Q220,30 200,30 L80,30 Q60,30 40,40 Z"/>
+
+                <Path Name="PartLeftBumper"
+                      Stroke="#94A3B8" StrokeThickness="1" Fill="#1E293B"
+                      Opacity="0.4"
+                      IsHitTestVisible="False"
+                      Data="M40,32 Q35,25 60,22 L100,22 Q105,25 100,30 L60,30 Z"/>
+                <Path Name="PartRightBumper"
+                      Stroke="#94A3B8" StrokeThickness="1" Fill="#1E293B"
+                      Opacity="0.4"
+                      IsHitTestVisible="False"
+                      Data="M240,32 Q245,25 220,22 L180,22 Q175,25 180,30 L220,30 Z"/>
+
+                <Rectangle Name="PartLeftTrigger"
+                           Canvas.Left="50"  Canvas.Top="8"
+                           Width="40" Height="10"
+                           Stroke="#94A3B8" StrokeThickness="1" Fill="#2563EB"
+                           Opacity="0.2"
+                           IsHitTestVisible="False"
+                           RadiusX="3" RadiusY="3"/>
+                <Rectangle Name="PartRightTrigger"
+                           Canvas.Left="190" Canvas.Top="8"
+                           Width="40" Height="10"
+                           Stroke="#94A3B8" StrokeThickness="1" Fill="#2563EB"
+                           Opacity="0.2"
+                           IsHitTestVisible="False"
+                           RadiusX="3" RadiusY="3"/>
+
+                <Ellipse Canvas.Left="40"  Canvas.Top="55" Width="46" Height="46"
+                         Stroke="#475569" StrokeThickness="2" Fill="#0F172A"
+                         IsHitTestVisible="False"/>
+                <Ellipse Name="PartLeftStick"
+                         Canvas.Left="51"  Canvas.Top="66" Width="24" Height="24"
+                         Fill="#60A5FA" Stroke="#1E40AF" StrokeThickness="1"
+                         IsHitTestVisible="False"/>
+
+                <Ellipse Canvas.Left="160" Canvas.Top="85" Width="46" Height="46"
+                         Stroke="#475569" StrokeThickness="2" Fill="#0F172A"
+                         IsHitTestVisible="False"/>
+                <Ellipse Name="PartRightStick"
+                         Canvas.Left="171" Canvas.Top="96" Width="24" Height="24"
+                         Fill="#60A5FA" Stroke="#1E40AF" StrokeThickness="1"
+                         IsHitTestVisible="False"/>
+
+                <Ellipse Name="PartDPadUp"    Canvas.Left="100" Canvas.Top="78" Width="14" Height="14"
+                         Fill="#1E293B" Stroke="#475569" StrokeThickness="1" Opacity="0.5"
+                         IsHitTestVisible="False"/>
+                <Ellipse Name="PartDPadDown"  Canvas.Left="100" Canvas.Top="106" Width="14" Height="14"
+                         Fill="#1E293B" Stroke="#475569" StrokeThickness="1" Opacity="0.5"
+                         IsHitTestVisible="False"/>
+                <Ellipse Name="PartDPadLeft"  Canvas.Left="86"  Canvas.Top="92" Width="14" Height="14"
+                         Fill="#1E293B" Stroke="#475569" StrokeThickness="1" Opacity="0.5"
+                         IsHitTestVisible="False"/>
+                <Ellipse Name="PartDPadRight" Canvas.Left="114" Canvas.Top="92" Width="14" Height="14"
+                         Fill="#1E293B" Stroke="#475569" StrokeThickness="1" Opacity="0.5"
+                         IsHitTestVisible="False"/>
+
+                <Ellipse Name="PartButtonY" Canvas.Left="220" Canvas.Top="48" Width="16" Height="16"
+                         Fill="#FBBF24" Stroke="#92400E" StrokeThickness="1" Opacity="0.4"
+                         IsHitTestVisible="False"/>
+                <TextBlock Canvas.Left="225" Canvas.Top="48" Text="Y"
+                           Foreground="#0B1730" FontWeight="Bold" FontSize="10"
+                           IsHitTestVisible="False"/>
+
+                <Ellipse Name="PartButtonX" Canvas.Left="202" Canvas.Top="66" Width="16" Height="16"
+                         Fill="#60A5FA" Stroke="#1E40AF" StrokeThickness="1" Opacity="0.4"
+                         IsHitTestVisible="False"/>
+                <TextBlock Canvas.Left="207" Canvas.Top="66" Text="X"
+                           Foreground="#0B1730" FontWeight="Bold" FontSize="10"
+                           IsHitTestVisible="False"/>
+
+                <Ellipse Name="PartButtonB" Canvas.Left="238" Canvas.Top="66" Width="16" Height="16"
+                         Fill="#F87171" Stroke="#7F1D1D" StrokeThickness="1" Opacity="0.4"
+                         IsHitTestVisible="False"/>
+                <TextBlock Canvas.Left="243" Canvas.Top="66" Text="B"
+                           Foreground="#0B1730" FontWeight="Bold" FontSize="10"
+                           IsHitTestVisible="False"/>
+
+                <Ellipse Name="PartButtonA" Canvas.Left="220" Canvas.Top="84" Width="16" Height="16"
+                         Fill="#4ADE80" Stroke="#14532D" StrokeThickness="1" Opacity="0.4"
+                         IsHitTestVisible="False"/>
+                <TextBlock Canvas.Left="225" Canvas.Top="84" Text="A"
+                           Foreground="#0B1730" FontWeight="Bold" FontSize="10"
+                           IsHitTestVisible="False"/>
+
+                <Ellipse Name="PartButtonBack"  Canvas.Left="125" Canvas.Top="62" Width="10" Height="10"
+                         Fill="#94A3B8" Opacity="0.5"
+                         IsHitTestVisible="False"/>
+                <Ellipse Name="PartButtonStart" Canvas.Left="148" Canvas.Top="62" Width="10" Height="10"
+                         Fill="#94A3B8" Opacity="0.5"
+                         IsHitTestVisible="False"/>
+
+                <Ellipse Name="PartConnected"
+                         Canvas.Left="135" Canvas.Top="36" Width="10" Height="10"
+                         Fill="#475569"
+                         IsHitTestVisible="False"/>
+                <TextBlock Canvas.Left="148" Canvas.Top="34" FontSize="9"
+                           Foreground="#94A3B8"
+                           IsHitTestVisible="False"
+                           Text="{Binding ConnectionLabel, ElementName=Root}"/>
+
+                <!-- ── Hot-spot buttons (the actual clickable layer) ──────── -->
+                <!--
+                Stick hot-spots use Border, not Button. Border bubbles all pointer
+                events naturally and doesn't capture them like Button does, so we
+                can hook PointerPressed/Moved/Released for drag tracking.
+                -->
+                <Border Name="HotLeftStick"
+                        Canvas.Left="38"  Canvas.Top="53" Width="50" Height="50"
+                        Background="Transparent"
+                        Cursor="Hand"/>
+                <Border Name="HotRightStick"
+                        Canvas.Left="158" Canvas.Top="83" Width="50" Height="50"
+                        Background="Transparent"
+                        Cursor="Hand"/>
+
+                <!-- Face buttons -->
+                <Button Name="HotButtonY"       Classes="hotspot" Tag="Y"
+                        Canvas.Left="220" Canvas.Top="48" Width="16" Height="16"/>
+                <Button Name="HotButtonX"       Classes="hotspot" Tag="X"
+                        Canvas.Left="202" Canvas.Top="66" Width="16" Height="16"/>
+                <Button Name="HotButtonB"       Classes="hotspot" Tag="B"
+                        Canvas.Left="238" Canvas.Top="66" Width="16" Height="16"/>
+                <Button Name="HotButtonA"       Classes="hotspot" Tag="A"
+                        Canvas.Left="220" Canvas.Top="84" Width="16" Height="16"/>
+
+                <!-- Bumpers -->
+                <Button Name="HotLeftBumper"    Classes="hotspot" Tag="LeftBumper"
+                        Canvas.Left="40"  Canvas.Top="22" Width="65" Height="10"/>
+                <Button Name="HotRightBumper"   Classes="hotspot" Tag="RightBumper"
+                        Canvas.Left="175" Canvas.Top="22" Width="65" Height="10"/>
+
+                <!-- D-pad -->
+                <Button Name="HotDPadUp"        Classes="hotspot" Tag="DPadUp"
+                        Canvas.Left="100" Canvas.Top="78" Width="14" Height="14"/>
+                <Button Name="HotDPadDown"      Classes="hotspot" Tag="DPadDown"
+                        Canvas.Left="100" Canvas.Top="106" Width="14" Height="14"/>
+                <Button Name="HotDPadLeft"      Classes="hotspot" Tag="DPadLeft"
+                        Canvas.Left="86"  Canvas.Top="92" Width="14" Height="14"/>
+                <Button Name="HotDPadRight"     Classes="hotspot" Tag="DPadRight"
+                        Canvas.Left="114" Canvas.Top="92" Width="14" Height="14"/>
+
+                <!-- Center buttons -->
+                <Button Name="HotButtonBack"    Classes="hotspot" Tag="Back"
+                        Canvas.Left="125" Canvas.Top="62" Width="10" Height="10"/>
+                <Button Name="HotButtonStart"   Classes="hotspot" Tag="Start"
+                        Canvas.Left="148" Canvas.Top="62" Width="10" Height="10"/>
+
+            </Canvas>
+        </Viewbox>
+    </Border>
+</UserControl>

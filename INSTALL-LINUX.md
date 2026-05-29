@@ -1,0 +1,94 @@
+# ShockUI — Linux Installation
+
+## TL;DR
+
+```bash
+sudo apt install ./shockui_0.9.0_amd64.deb
+```
+
+apt pulls in every system dependency automatically (X11, fontconfig,
+HarfBuzz, freetype, OpenGL, ICU). Launch from the application menu, or
+run `shockui` from any terminal.
+
+> **Important:** after the first install you must **log out and log
+> back in** so the new `dialout` group membership takes effect — without
+> it the app won't be able to open `/dev/ttyUSB*` or `/dev/ttyACM*`.
+
+---
+
+## Building the .deb
+
+Run on a Debian/Ubuntu machine (or WSL on Windows) from the project
+root:
+
+```bash
+./build-linux-deb.sh
+```
+
+Requirements on the build machine:
+
+| Tool       | Where to get it                                       |
+|------------|-------------------------------------------------------|
+| .NET 8 SDK | `sudo apt install dotnet-sdk-8.0` or microsoft.com    |
+| dpkg-deb   | preinstalled on Debian/Ubuntu (and WSL Ubuntu images) |
+
+Output appears in `dist/shockui_<version>_amd64.deb`.
+
+The version in the filename comes straight from `<Version>` in
+`ShockUI.csproj`, so bumping that line is the only step needed to cut
+a new release.
+
+## Upgrade
+
+Just install a newer .deb on top:
+
+```bash
+sudo apt install ./shockui_0.9.1_amd64.deb
+```
+
+apt handles the upgrade in place — no need to uninstall first. The
+desktop entry, dialout group setup, and binaries all refresh atomically.
+
+## Uninstall
+
+```bash
+sudo apt remove shockui          # remove binaries + launcher
+sudo apt purge  shockui          # also wipe any leftover config
+```
+
+## What gets installed where
+
+| Path                                       | Purpose                       |
+|--------------------------------------------|-------------------------------|
+| `/opt/shockui/`                            | App binaries (self-contained) |
+| `/usr/local/bin/shockui`                   | Shell wrapper                 |
+| `/usr/share/applications/shockui.desktop`  | Application menu entry        |
+
+## Tested distros
+
+- Ubuntu 22.04 LTS, 24.04 LTS
+- Debian 12
+
+Other Debian-family distros should work too as long as the
+dependencies in the `Depends:` line of the package resolve. If you
+hit a "depends on libicuXX" error on a newer distro, edit the
+`Depends:` line in `build-linux-deb.sh` and add the right ICU version
+to the alternative list (`libicu70 | libicu72 | libicu74 | libicu76`).
+
+## Troubleshooting
+
+**"Permission denied" opening serial port** — `dialout` group hasn't
+taken effect yet. Confirm with `groups | grep dialout`. If missing,
+run `sudo usermod -a -G dialout $USER`, then log out and back in.
+
+**Application menu entry not appearing** — try
+`update-desktop-database` or log out / back in.
+
+**Old version still launches after upgrade** — confirm the new .deb's
+`<Version>` is higher than the installed one. Check with
+`dpkg -l shockui`.
+
+**`libSystem.IO.Ports.Native.so` errors** — handled at runtime by the
+DllImportResolver shim in `Program.cs`; should not surface with the
+self-contained publish output the script produces. If it does, run
+`ldd /opt/shockui/ShockUI` and check for missing libs.

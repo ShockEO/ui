@@ -1,0 +1,606 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:conv="using:ShockUI.Converters"
+             xmlns:app="using:ShockUI"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShockUI.ViewModels.Modules"
+             xmlns:shared="using:ShockUI.Views.Shared"
+             xmlns:views="using:ShockUI.Views"
+             xmlns:local="using:ShockUI.Views.Modules"
+             x:Class="ShockUI.Views.Modules.PanTiltControllerView"
+             x:DataType="vm:PanTiltControllerViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="Border.panel-card">
+      <Setter Property="Background" Value="#0D1B34"/>
+      <Setter Property="BorderBrush" Value="#27476F"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="12"/>
+    </Style>
+    <Style Selector="Border.sub-card">
+      <Setter Property="Background" Value="#0B1730"/>
+      <Setter Property="BorderBrush" Value="#1E293B"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="10"/>
+    </Style>
+    <Style Selector="Border.ok">
+      <Setter Property="Background" Value="#14532D"/>
+      <Setter Property="BorderBrush" Value="#22C55E"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="6,2"/>
+    </Style>
+    <Style Selector="Border.fault">
+      <Setter Property="Background" Value="#7F1D1D"/>
+      <Setter Property="BorderBrush" Value="#EF4444"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="6,2"/>
+    </Style>
+    <Style Selector="TextBlock.section">
+      <Setter Property="Foreground" Value="#E2E8F0"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+    <Style Selector="TextBlock.sub-section">
+      <Setter Property="Foreground" Value="#93C5FD"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Foreground" Value="#94A3B8"/>
+      <Setter Property="FontSize" Value="11"/>
+    </Style>
+    <Style Selector="TextBlock.value">
+      <Setter Property="Foreground" Value="#E2E8F0"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontFamily" Value="Consolas"/>
+    </Style>
+    <Style Selector="Button.cmd">
+      <Setter Property="Background" Value="#1E40AF"/>
+      <Setter Property="BorderBrush" Value="#2563EB"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Foreground" Value="#F8FAFC"/>
+      <Setter Property="Padding" Value="10,4"/>
+    </Style>
+  </UserControl.Styles>
+
+  <shared:ModuleWorkspaceShell DataContext="{Binding}">
+
+    <shared:ModuleWorkspaceShell.HeaderActions>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Border Background="#1E40AF" BorderBrush="#3B82F6" BorderThickness="1"
+                CornerRadius="4" Padding="6,2">
+          <TextBlock Text="{Binding ConnectionStateText}" Foreground="#F8FAFC" FontSize="11"/>
+        </Border>
+      </StackPanel>
+    </shared:ModuleWorkspaceShell.HeaderActions>
+
+    <!-- ===== LEFT PANEL ===== -->
+    <shared:ModuleWorkspaceShell.LeftContent>
+      <StackPanel Spacing="8">
+
+        <!-- = Connection card = -->
+        <Border Classes="panel-card" VerticalAlignment="Top">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="section" Text="Connection"/>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <StackPanel Grid.Column="0" Spacing="6">
+                <TextBlock Classes="label" Text="Serial Port"
+                           IsVisible="{Binding IsUartTransport}"/>
+                <ComboBox ItemsSource="{Binding AvailablePorts}"
+                          SelectedItem="{Binding SelectedPort}"
+                          IsVisible="{Binding IsUartTransport}"/>
+                <Border Background="#08142A" BorderBrush="#27476F" BorderThickness="1"
+                        CornerRadius="4" Padding="8,4"
+                        IsVisible="{Binding IsUdpTransport}">
+                  <TextBlock Text="{Binding TransportSummary}"
+                             FontFamily="Consolas" Foreground="#E2E8F0"/>
+                </Border>
+                <WrapPanel Orientation="Horizontal">
+                  <Button Classes="cmd" Content="Refresh"
+                          Command="{Binding RefreshPortsCommand}"
+                          IsVisible="{Binding IsUartTransport}"
+                          Margin="0,0,4,0"/>
+                  <Button Classes="cmd" Content="Connect"
+                          Command="{Binding ConnectCommand}"
+                          IsEnabled="{Binding CanConnect}" Margin="0,0,4,0"/>
+                  <Button Classes="cmd" Content="Disconnect"
+                          Command="{Binding DisconnectCommand}"
+                          IsEnabled="{Binding CanDisconnect}" Margin="0,0,4,0"/>
+                  <Button Classes="cmd" Content="Port Settings"
+                          Command="{Binding OpenPortSettingsCommand}"
+                          ToolTip.Tip="Configure transport, baud rate, parity, timeouts, and auto-reconnect"/>
+                </WrapPanel>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Classes="label" Text="Status"/>
+                <TextBlock Classes="value" Text="{Binding StatusText}"/>
+                <TextBlock Classes="label" Text="Mode"/>
+                <TextBlock Classes="value" Text="{Binding ModeStateText}"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!--
+          =
+          Pan/Tilt Stab Controller - SRS §3.3
+          Combined card grouping every section from the PTSC SRS document
+          plus the Xbox controller visual. Sub-sections are visually nested
+          as sub-cards so the operator sees them all under one heading.
+          =
+        -->
+        <Border Classes="panel-card" VerticalAlignment="Top">
+          <StackPanel Spacing="10">
+
+            <TextBlock Classes="section" Text="Pan/Tilt Stab Controller (PTSC) - SRS §3.3"/>
+
+            <!-- = Controller visual + quick-reference legend = -->
+            <Border Classes="sub-card" IsVisible="{Binding ShowControllerVisual}">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Classes="sub-section" Text="Controller"/>
+                  <Button Grid.Column="1" Classes="cmd"
+                          Content="Hide"
+                          Command="{Binding ToggleControllerVisualCommand}"/>
+                </Grid>
+
+                <views:XboxControllerVisual
+                    State="{Binding ControllerState}"
+                    InteractionEnabled="{Binding IsControllerInteractionEnabled}"/>
+
+                <Border Background="#020617" BorderBrush="#334155"
+                        BorderThickness="1" CornerRadius="4" Padding="6">
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                        ColumnSpacing="8" RowSpacing="2">
+                    <TextBlock Grid.Row="0" Grid.Column="0" FontFamily="Consolas" FontSize="10"
+                               Foreground="#93C5FD" Text="L Stick"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" FontFamily="Consolas" FontSize="10"
+                               Foreground="#94A3B8" Text="Pan / Tilt speed (proportional)"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" FontFamily="Consolas" FontSize="10"
+                               Foreground="#93C5FD" Text="R Stick"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" FontFamily="Consolas" FontSize="10"
+                               Foreground="#94A3B8" Text="Fine trim (×0.2)"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" FontFamily="Consolas" FontSize="10"
+                               Foreground="#93C5FD" Text="LT / RT"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" FontFamily="Consolas" FontSize="10"
+                               Foreground="#94A3B8" Text="Slow ×0.1  /  Boost ×2"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" FontFamily="Consolas" FontSize="10"
+                               Foreground="#93C5FD" Text="A / B"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" FontFamily="Consolas" FontSize="10"
+                               Foreground="#94A3B8" Text="Toggle stab / Emergency stop"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" FontFamily="Consolas" FontSize="10"
+                               Foreground="#93C5FD" Text="X / Y"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" FontFamily="Consolas" FontSize="10"
+                               Foreground="#94A3B8" Text="Get Motor / Run IBIT"/>
+                    <TextBlock Grid.Row="5" Grid.Column="0" FontFamily="Consolas" FontSize="10"
+                               Foreground="#93C5FD" Text="Start"/>
+                    <TextBlock Grid.Row="5" Grid.Column="1" FontFamily="Consolas" FontSize="10"
+                               Foreground="#94A3B8" Text="Home (Pan=0°, Tilt=0°)"/>
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Button Classes="cmd"
+                    Content="Show Controller"
+                    HorizontalAlignment="Left"
+                    Command="{Binding ToggleControllerVisualCommand}"
+                    IsVisible="{Binding !ShowControllerVisual}"/>
+
+            <!--
+              The 4 SRS sub-sections. When the video feed is hidden we have
+              more horizontal room, so we lay them out as 2×2 grid. When
+              video is shown, we stack 1-col.
+            -->
+
+            <!-- 2-col sub-section grid (video hidden) -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8"
+                  IsVisible="{Binding !$parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
+              <StackPanel Grid.Column="0" Spacing="8">
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MotorControlTemplate}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="8">
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource StabControlTemplate}"/>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource IbitTemplate}"/>
+              </StackPanel>
+            </Grid>
+
+            <!-- 1-col sub-section stack (video shown) -->
+            <StackPanel Spacing="8"
+                        IsVisible="{Binding $parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MotorControlTemplate}"/>
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource StabControlTemplate}"/>
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource IbitTemplate}"/>
+            </StackPanel>
+
+          </StackPanel>
+        </Border>
+
+      </StackPanel>
+    </shared:ModuleWorkspaceShell.LeftContent>
+
+    <!-- ===== RIGHT TOP ===== -->
+    <shared:ModuleWorkspaceShell.RightTopContent>
+      <Border Background="#0B1730" BorderBrush="#27476F"
+              BorderThickness="1" CornerRadius="8" Padding="10">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Workspace Log" FontSize="13" FontWeight="Bold" Foreground="#E2E8F0"/>
+          <TextBlock Text="Command / response activity" FontSize="11" Foreground="#93C5FD"/>
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6" MinHeight="80">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <ItemsControl ItemsSource="{Binding LogLines}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11" Foreground="#94A3B8"/>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+          <Button Classes="cmd" Content="Clear Log" HorizontalAlignment="Right"
+                  Command="{Binding ClearLogCommand}"/>
+        </StackPanel>
+      </Border>
+    </shared:ModuleWorkspaceShell.RightTopContent>
+
+    <!-- ===== RIGHT BOTTOM ===== -->
+    <shared:ModuleWorkspaceShell.RightBottomContent>
+      <Border Background="#0B1730" BorderBrush="#27476F"
+              BorderThickness="1" CornerRadius="8" Padding="10">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Raw Packet Trace" FontSize="13" FontWeight="Bold" Foreground="#E2E8F0"/>
+          <TextBlock Text="TX / RX hex frames" FontSize="11" Foreground="#93C5FD"/>
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6" MinHeight="60">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <ItemsControl ItemsSource="{Binding TraceLines}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11" Foreground="#94A3B8"/>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+          <Button Classes="cmd" Content="Clear Trace" HorizontalAlignment="Right"
+                  Command="{Binding ClearTraceCommand}"/>
+        </StackPanel>
+      </Border>
+    </shared:ModuleWorkspaceShell.RightBottomContent>
+
+    <!-- ===== Decoded Frame ===== -->
+    <shared:ModuleWorkspaceShell.RightExtraContent>
+      <Border Background="#0B1730" BorderBrush="#27476F" BorderThickness="1"
+              CornerRadius="8" Padding="8">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="6">
+          <StackPanel Grid.Row="0" Spacing="2">
+            <TextBlock Text="Decoded Frame" FontSize="13" FontWeight="Bold"
+                       Foreground="#E2E8F0"/>
+            <TextBlock Text="{Binding LastDecodedFrameHeader}"
+                       FontSize="11" Foreground="#93C5FD"/>
+          </StackPanel>
+          <Border Grid.Row="1" Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6" MaxHeight="260">
+            <ScrollViewer VerticalScrollBarVisibility="Visible"
+                          HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding LastDecodedFrameRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="50,110,70,*" ColumnSpacing="6">
+                      <TextBlock Grid.Column="0" Text="{Binding Position}"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Foreground="#64748B"/>
+                      <TextBlock Grid.Column="1" Text="{Binding Label}"
+                                 FontFamily="Consolas" FontSize="11"
+                                 FontWeight="SemiBold" Foreground="#93C5FD"/>
+                      <TextBlock Grid.Column="2" Text="{Binding HexValue}"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Foreground="#FBBF24"/>
+                      <TextBlock Grid.Column="3" Text="{Binding Meaning}"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Foreground="#94A3B8" TextWrapping="Wrap"/>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+          <Button Grid.Row="2" Classes="cmd" Content="Clear Decoded"
+                  Command="{Binding ClearDecodedFrameCommand}"
+                  HorizontalAlignment="Right"/>
+        </Grid>
+      </Border>
+    </shared:ModuleWorkspaceShell.RightExtraContent>
+
+  </shared:ModuleWorkspaceShell>
+
+  <!--
+    Sub-section templates.
+    
+    Defined as DataTemplates in UserControl.Resources so the same XAML can
+    be instantiated twice (once in the 2-col grid, once in the 1-col stack)
+    without duplication.
+  -->
+  <UserControl.Resources>
+
+    <!-- = §3.3.1 General Status = -->
+    <DataTemplate x:Key="GeneralStatusTemplate" x:DataType="vm:PanTiltControllerViewModel">
+      <Border Classes="sub-card">
+        <StackPanel Spacing="6">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Classes="sub-section" Text="§3.3.1 General Status"/>
+            <Button Grid.Column="1" Classes="cmd" Content="Poll"
+                    Command="{Binding PollGeneralStatusCommand}"
+                    IsEnabled="{Binding CanSend}"/>
+          </Grid>
+
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="3">
+            <TextBlock Classes="label" Text="System State" Grid.Row="0"/>
+            <TextBlock Classes="value" Text="{Binding SystemState}" Grid.Row="0" Grid.Column="1"/>
+            <TextBlock Classes="label" Text="Pan Mode" Grid.Row="1"/>
+            <TextBlock Classes="value" Text="{Binding PanModeText}" Grid.Row="1" Grid.Column="1"/>
+            <TextBlock Classes="label" Text="Tilt Mode" Grid.Row="2"/>
+            <TextBlock Classes="value" Text="{Binding TiltModeText}" Grid.Row="2" Grid.Column="1"/>
+            <TextBlock Classes="label" Text="Bus Voltage (raw ADC)" Grid.Row="3"/>
+            <TextBlock Classes="value" Text="{Binding BusVoltage, StringFormat={}{0:F0}}" Grid.Row="3" Grid.Column="1"/>
+          </Grid>
+
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="label" Text="Health Flags"/>
+              <WrapPanel Orientation="Horizontal">
+                <Border Classes="ok" Margin="0,0,4,4" IsVisible="{Binding PowerGood}">
+                  <TextBlock Text="Power OK" Foreground="#DCFCE7" FontSize="11"/>
+                </Border>
+                <Border Classes="fault" Margin="0,0,4,4" IsVisible="{Binding !PowerGood}">
+                  <TextBlock Text="Power FAIL" Foreground="#FEE2E2" FontSize="11"/>
+                </Border>
+                <Border Classes="ok" Margin="0,0,4,4" IsVisible="{Binding ImuOk}">
+                  <TextBlock Text="IMU OK" Foreground="#DCFCE7" FontSize="11"/>
+                </Border>
+                <Border Classes="fault" Margin="0,0,4,4" IsVisible="{Binding !ImuOk}">
+                  <TextBlock Text="IMU ERR" Foreground="#FEE2E2" FontSize="11"/>
+                </Border>
+                <Border Classes="ok" Margin="0,0,4,4" IsVisible="{Binding PanEncoderOk}">
+                  <TextBlock Text="Pan Enc OK" Foreground="#DCFCE7" FontSize="11"/>
+                </Border>
+                <Border Classes="fault" Margin="0,0,4,4" IsVisible="{Binding !PanEncoderOk}">
+                  <TextBlock Text="Pan Enc ERR" Foreground="#FEE2E2" FontSize="11"/>
+                </Border>
+                <Border Classes="ok" Margin="0,0,4,4" IsVisible="{Binding TiltEncoderOk}">
+                  <TextBlock Text="Tilt Enc OK" Foreground="#DCFCE7" FontSize="11"/>
+                </Border>
+                <Border Classes="fault" Margin="0,0,4,4" IsVisible="{Binding !TiltEncoderOk}">
+                  <TextBlock Text="Tilt Enc ERR" Foreground="#FEE2E2" FontSize="11"/>
+                </Border>
+                <Border Classes="fault" Margin="0,0,4,4" IsVisible="{Binding PanMotorFault}">
+                  <TextBlock Text="Pan Fault" Foreground="#FEE2E2" FontSize="11"/>
+                </Border>
+                <Border Classes="fault" Margin="0,0,4,4" IsVisible="{Binding TiltMotorFault}">
+                  <TextBlock Text="Tilt Fault" Foreground="#FEE2E2" FontSize="11"/>
+                </Border>
+                <Border Classes="fault" Margin="0,0,4,4" IsVisible="{Binding MotorBrakeOn}">
+                  <TextBlock Text="Brake ON" Foreground="#FEE2E2" FontSize="11"/>
+                </Border>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- = §3.3.2 Motor Control = -->
+    <DataTemplate x:Key="MotorControlTemplate" x:DataType="vm:PanTiltControllerViewModel">
+      <Border Classes="sub-card">
+        <StackPanel Spacing="6">
+          <TextBlock Classes="sub-section" Text="§3.3.2 Motor Control"/>
+
+          <!-- Feedback (GET) -->
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6">
+            <StackPanel Spacing="4">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="label" Text="Feedback (GET)"/>
+                <Button Grid.Column="1" Classes="cmd" Content="Get"
+                        Command="{Binding GetMotorControlCommand}"
+                        IsEnabled="{Binding CanSend}" Padding="8,3"/>
+              </Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="3">
+                <TextBlock Classes="label" Text="Pan Angle" Grid.Row="0"/>
+                <TextBlock Classes="value" Text="{Binding PanAngleDeg, StringFormat={}{0:F4} °}" Grid.Row="0" Grid.Column="1"/>
+                <TextBlock Classes="label" Text="Tilt Angle" Grid.Row="1"/>
+                <TextBlock Classes="value" Text="{Binding TiltAngleDeg, StringFormat={}{0:F4} °}" Grid.Row="1" Grid.Column="1"/>
+                <TextBlock Classes="label" Text="Pan Speed (ticks/s)" Grid.Row="2"/>
+                <TextBlock Classes="value" Text="{Binding FbPanSpeed}" Grid.Row="2" Grid.Column="1"/>
+                <TextBlock Classes="label" Text="Tilt Speed (ticks/s)" Grid.Row="3"/>
+                <TextBlock Classes="value" Text="{Binding FbTiltSpeed}" Grid.Row="3" Grid.Column="1"/>
+              </Grid>
+              <WrapPanel Orientation="Horizontal">
+                <TextBlock Classes="label" Text="{Binding FbPanPositionValid, StringFormat={}Pan Enc Valid: {0}}" Margin="0,0,12,0"/>
+                <TextBlock Classes="label" Text="{Binding FbTiltPositionValid, StringFormat={}Tilt Enc Valid: {0}}"/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- SET parameters -->
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6">
+            <StackPanel Spacing="6">
+              <TextBlock Classes="label" Text="Set Commands"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <StackPanel Grid.Column="0" Spacing="4">
+                  <TextBlock Classes="label" Text="Pan Control Mode"/>
+                  <ComboBox ItemsSource="{Binding ControlModeOpts}" SelectedIndex="{Binding SetMotorPanMode}"/>
+                  <CheckBox Content="Pan Disengage (PWM OFF)"
+                            IsChecked="{Binding SetPanDisengage}" Foreground="#E2E8F0"/>
+                  <TextBlock Classes="label" Text="Pan Target Position (ticks)"/>
+                  <NumericUpDown Value="{Binding SetPanPosition}" Minimum="0" Maximum="2097151"/>
+                  <TextBlock Classes="label" Text="Pan Speed (ticks/s, signed)"/>
+                  <NumericUpDown Value="{Binding SetPanSpeed}" Minimum="-2000000" Maximum="2000000"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Classes="label" Text="Tilt Control Mode"/>
+                  <ComboBox ItemsSource="{Binding ControlModeOpts}" SelectedIndex="{Binding SetMotorTiltMode}"/>
+                  <CheckBox Content="Tilt Disengage (PWM OFF)"
+                            IsChecked="{Binding SetTiltDisengage}" Foreground="#E2E8F0"/>
+                  <TextBlock Classes="label" Text="Tilt Target Position (ticks)"/>
+                  <NumericUpDown Value="{Binding SetTiltPosition}" Minimum="0" Maximum="2097151"/>
+                  <TextBlock Classes="label" Text="Tilt Speed (ticks/s, signed)"/>
+                  <NumericUpDown Value="{Binding SetTiltSpeed}" Minimum="-2000000" Maximum="2000000"/>
+                </StackPanel>
+              </Grid>
+              <Button Classes="cmd" Content="Send Motor SET"
+                      Command="{Binding SetMotorControlCommand}"
+                      IsEnabled="{Binding CanSend}"/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- = §3.3.3 Stabilisation Control = -->
+    <DataTemplate x:Key="StabControlTemplate" x:DataType="vm:PanTiltControllerViewModel">
+      <Border Classes="sub-card">
+        <StackPanel Spacing="6">
+          <TextBlock Classes="sub-section" Text="§3.3.3 Stabilisation Control"/>
+
+          <!-- IMU feedback -->
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6">
+            <StackPanel Spacing="4">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="label" Text="IMU Feedback (Stab GET)"/>
+                <Button Grid.Column="1" Classes="cmd" Content="Get"
+                        Command="{Binding GetStabControlCommand}"
+                        IsEnabled="{Binding CanSend}" Padding="8,3"/>
+              </Grid>
+              <TextBlock Classes="value" Text="{Binding ImuSummary}" TextWrapping="Wrap"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="3">
+                <TextBlock Classes="label" Text="Accel X (raw)" Grid.Row="0"/>
+                <TextBlock Classes="value" Text="{Binding ImuAccelX, StringFormat={}{0:F0}}" Grid.Row="0" Grid.Column="1"/>
+                <TextBlock Classes="label" Text="Accel Y (raw)" Grid.Row="1"/>
+                <TextBlock Classes="value" Text="{Binding ImuAccelY, StringFormat={}{0:F0}}" Grid.Row="1" Grid.Column="1"/>
+                <TextBlock Classes="label" Text="Accel Z (raw)" Grid.Row="2"/>
+                <TextBlock Classes="value" Text="{Binding ImuAccelZ, StringFormat={}{0:F0}}" Grid.Row="2" Grid.Column="1"/>
+              </Grid>
+              <WrapPanel Orientation="Horizontal">
+                <TextBlock Classes="label"
+                           Text="{Binding ImuCommsOk, StringFormat={}IMU Comms: {0}}"
+                           Margin="0,0,10,0"/>
+                <TextBlock Classes="label"
+                           Text="{Binding ImuTempC, StringFormat={}IMU Temp: {0:F1} °C}"/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- Stab SET -->
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6">
+            <StackPanel Spacing="6">
+              <TextBlock Classes="label" Text="Stab SET"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <StackPanel Grid.Column="0" Spacing="4">
+                  <TextBlock Classes="label" Text="Pan Stab Mode"/>
+                  <ComboBox ItemsSource="{Binding ControlModeOpts}" SelectedIndex="{Binding SetStabPanMode}"/>
+                  <CheckBox Content="Pan Disengage"
+                            IsChecked="{Binding SetStabPanDisengage}" Foreground="#E2E8F0"/>
+                  <TextBlock Classes="label" Text="EKF Pitch Target (ticks)"/>
+                  <NumericUpDown Value="{Binding SetEkfPitchTarget}" Minimum="-2097151" Maximum="2097151"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Classes="label" Text="Tilt Stab Mode"/>
+                  <ComboBox ItemsSource="{Binding ControlModeOpts}" SelectedIndex="{Binding SetStabTiltMode}"/>
+                  <CheckBox Content="Tilt Disengage"
+                            IsChecked="{Binding SetStabTiltDisengage}" Foreground="#E2E8F0"/>
+                  <TextBlock Classes="label" Text="EKF Yaw Target (ticks)"/>
+                  <NumericUpDown Value="{Binding SetEkfYawTarget}" Minimum="-2097151" Maximum="2097151"/>
+                </StackPanel>
+              </Grid>
+              <Button Classes="cmd" Content="Send Stab SET"
+                      Command="{Binding SetStabControlCommand}"
+                      IsEnabled="{Binding CanSend}"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <TextBlock Classes="label" Text="EKF Pitch Estimation"/>
+                  <TextBlock Classes="value" Text="{Binding FbEkfPitchDeg, StringFormat={}{0:F4} °}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Classes="label" Text="EKF Yaw Estimation"/>
+                  <TextBlock Classes="value" Text="{Binding FbEkfYawDeg, StringFormat={}{0:F4} °}"/>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- = §3.3.4 IBIT = -->
+    <DataTemplate x:Key="IbitTemplate" x:DataType="vm:PanTiltControllerViewModel">
+      <Border Classes="sub-card">
+        <StackPanel Spacing="6">
+          <TextBlock Classes="sub-section" Text="§3.3.4 IBIT - Built-In Test"/>
+
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Classes="label" Text="IBIT Mode"/>
+              <ComboBox ItemsSource="{Binding IbitModeOpts}" SelectedIndex="{Binding IbitMode}"/>
+              <WrapPanel Orientation="Horizontal">
+                <Button Classes="cmd" Content="Run IBIT"
+                        Command="{Binding RunIbitCommand}"
+                        IsEnabled="{Binding CanSend}" Margin="0,0,4,0"/>
+                <Button Classes="cmd" Content="Read Results"
+                        Command="{Binding ReadIbitResultsCommand}"
+                        IsEnabled="{Binding CanSend}"/>
+              </WrapPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4">
+              <TextBlock Classes="label" Text="Summary"/>
+              <TextBlock Classes="value" Text="{Binding IbitSummary}" FontWeight="Bold"/>
+              <TextBlock Classes="label" Text="{Binding IbitProgress, StringFormat={}Progress: {0}%}"/>
+            </StackPanel>
+          </Grid>
+
+          <Border Background="#020617" BorderBrush="#334155"
+                  BorderThickness="1" CornerRadius="4" Padding="6">
+            <StackPanel Spacing="4">
+              <!-- Original IBIT bits (bytes 13-15) -->
+              <TextBlock Classes="label" Text="{Binding IbitPanResult}"    TextWrapping="Wrap"/>
+              <TextBlock Classes="label" Text="{Binding IbitTiltResult}"   TextWrapping="Wrap"/>
+              <TextBlock Classes="label" Text="{Binding IbitSensorResult}" TextWrapping="Wrap"/>
+
+              <!-- May 2026 SRS additions -->
+              <Border BorderBrush="#1E293B" BorderThickness="0,1,0,0" Margin="0,2,0,0" Padding="0,4,0,0">
+                <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <TextBlock Classes="label" Foreground="#94A3B8"
+                               Text="Pan Encoder Zero Offset:"  Grid.Column="0"/>
+                    <TextBlock Classes="label" Text="{Binding IbitPanZeroOffset}"  Grid.Column="1"/>
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <TextBlock Classes="label" Foreground="#94A3B8"
+                               Text="Tilt Encoder Zero Offset:" Grid.Column="0"/>
+                    <TextBlock Classes="label" Text="{Binding IbitTiltZeroOffset}" Grid.Column="1"/>
+                  </Grid>
+                  <TextBlock Classes="label" Text="{Binding IbitPanCbitResult}"   TextWrapping="Wrap"/>
+                  <TextBlock Classes="label" Text="{Binding IbitTiltCbitResult}"  TextWrapping="Wrap"/>
+                  <TextBlock Classes="label" Text="{Binding IbitImuStatusResult}" TextWrapping="Wrap"/>
+                  <TextBlock Classes="label" Text="{Binding IbitImuRangeResult}"  TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+  </UserControl.Resources>
+</UserControl>

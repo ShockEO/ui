@@ -1,0 +1,150 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShockUI.ViewModels"
+             x:Class="ShockUI.Views.PortSettingsView"
+             x:DataType="vm:PortSettingsViewModel"
+             MinWidth="380" MinHeight="420">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="Foreground" Value="#E2E8F0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background"     Value="#1E40AF"/>
+            <Setter Property="BorderBrush"    Value="#2563EB"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground"    Value="#F8FAFC"/>
+            <Setter Property="Padding"       Value="14,6"/>
+        </Style>
+        <Style Selector="Button.secondary">
+            <Setter Property="Background"     Value="#334155"/>
+            <Setter Property="BorderBrush"    Value="#475569"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground"    Value="#E2E8F0"/>
+            <Setter Property="Padding"       Value="14,6"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="#0B1730" BorderBrush="#27476F"
+            BorderThickness="1" CornerRadius="8" Padding="14">
+        <StackPanel Spacing="10">
+
+            <TextBlock Classes="section" Text="Port Settings"/>
+            <TextBlock Classes="label"
+                       Text="Changes apply immediately. If the port is live it will be re-opened."/>
+
+            <!--
+            Transport selector. UART is the default; UDP switches the panel
+            below to show network endpoint fields instead of serial parameters.
+            Both groupings share the AutoReconnect and Apply/Cancel controls.
+            -->
+            <StackPanel Spacing="4">
+                <TextBlock Classes="label" Text="Transport"/>
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <RadioButton GroupName="Transport"
+                                 Content="UART (Serial)"
+                                 Foreground="#E2E8F0"
+                                 IsChecked="{Binding IsUart}"
+                                 Command="{Binding SelectUartCommand}"/>
+                    <RadioButton GroupName="Transport"
+                                 Content="LAN (UDP)"
+                                 Foreground="#E2E8F0"
+                                 IsChecked="{Binding IsUdp}"
+                                 Command="{Binding SelectUdpCommand}"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- ── UART parameter group ───────────────────────────────────── -->
+            <StackPanel Spacing="10" IsVisible="{Binding IsUart}">
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="label" Text="Baud Rate"/>
+                    <ComboBox ItemsSource="{Binding BaudRateOptions}"
+                              SelectedItem="{Binding BaudRate}"/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,8,*">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Classes="label" Text="Data Bits"/>
+                        <ComboBox ItemsSource="{Binding DataBitsOptions}"
+                                  SelectedItem="{Binding DataBits}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2">
+                        <TextBlock Classes="label" Text="Parity"/>
+                        <ComboBox ItemsSource="{Binding ParityOptions}"
+                                  SelectedItem="{Binding Parity}"/>
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,8,*">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Classes="label" Text="Stop Bits"/>
+                        <ComboBox ItemsSource="{Binding StopBitsOptions}"
+                                  SelectedItem="{Binding StopBits}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2">
+                        <TextBlock Classes="label" Text="Handshake"/>
+                        <ComboBox ItemsSource="{Binding HandshakeOptions}"
+                                  SelectedItem="{Binding Handshake}"/>
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,8,*">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Classes="label" Text="Read Timeout (ms)"/>
+                        <NumericUpDown Value="{Binding ReadTimeout}"
+                                       Minimum="0" Maximum="60000" Increment="50"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2">
+                        <TextBlock Classes="label" Text="Write Timeout (ms)"/>
+                        <NumericUpDown Value="{Binding WriteTimeout}"
+                                       Minimum="0" Maximum="60000" Increment="50"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+            <!-- ── UDP parameter group ────────────────────────────────────── -->
+            <StackPanel Spacing="10" IsVisible="{Binding IsUdp}">
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="label" Text="Remote Host (IP or DNS name)"/>
+                    <TextBox Text="{Binding RemoteHost}" Watermark="192.168.1.10"/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,8,*">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Classes="label" Text="Remote Port (TX)"/>
+                        <NumericUpDown Value="{Binding RemotePort}"
+                                       Minimum="1" Maximum="65535" Increment="1"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2">
+                        <TextBlock Classes="label" Text="Local Port (RX)"/>
+                        <NumericUpDown Value="{Binding LocalPort}"
+                                       Minimum="1" Maximum="65535" Increment="1"/>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Classes="label"
+                           Text="UDP is connectionless. The local port must be free; if 0 is set, the OS picks."/>
+            </StackPanel>
+
+            <!-- ── Shared ─────────────────────────────────────────────────── -->
+            <CheckBox IsChecked="{Binding AutoReconnect}"
+                      Content="Auto-reconnect on dropout"
+                      Foreground="#E2E8F0"/>
+
+            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,6,0,0" ColumnSpacing="8">
+                <Button Grid.Column="1" Classes="secondary"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"/>
+                <Button Grid.Column="2" Classes="primary"
+                        Content="Apply"
+                        Command="{Binding ApplyCommand}"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>
