@@ -33,6 +33,23 @@ public static class DeviceCommandId
     public const byte Ibit = 0x14;
     public const byte RgbImageEnhancement = 0x15;  // §3.3.10  RGB (visible-spectrum) image enhancement
 
+    // ── PTSC-native command bytes (frames addressed to dst 0x20) ─────────
+    // These are the command identifiers the Pan/Tilt Stab Controller (C2000)
+    // expects on its OWN bus. They are a SEPARATE namespace from the EOA
+    // commands above: e.g. 0x09 here means "Motor Set to the PTSC", which is
+    // unrelated to MwirFovChange (also 0x09) sent to an EOA at dst 0x52/0x53/
+    // 0x54. RX responses are therefore disambiguated by SourceId == 0x20, not
+    // by command byte alone. Verified against the C2000 reference frames.
+    public static class Ptsc
+    {
+        public const byte GeneralStatusGet = 0x01;   // GET, payload 00 00
+        public const byte MotorStatusGet = 0x08;   // GET, payload 00 00
+        public const byte StabStatusGet = 0x0A;   // GET, payload 00 00
+        public const byte MotorSet = 0x09;   // SET, 20-byte payload
+        public const byte StabSet = 0x0B;   // SET, 20-byte payload
+        public const byte Ibit = 0x23;   // [mode, 00]; mode 0=Read,1=Full,2=Sensors
+    }
+
     // ── Maintenance-only commands ─────────────────────────────────────
     /// <summary>Start NUC (Non-Uniformity Correction) on the RGB sensor.
     /// Payload: [nucType, 0x00, 0x00] — nucType = 1 (1-Point) or 2 (2-Point).

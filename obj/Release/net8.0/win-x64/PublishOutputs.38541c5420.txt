@@ -1,0 +1,8 @@
+E:\UIRelease\ShockUI.pdb
+E:\UIRelease\mwir_fov_positions.json
+E:\UIRelease\swir_fov_positions.json
+E:\UIRelease\visnir_fov_positions.json
+E:\UIRelease\av_libglesv2.dll
+E:\UIRelease\libHarfBuzzSharp.dll
+E:\UIRelease\libSkiaSharp.dll
+E:\UIRelease\ShockUI.exe

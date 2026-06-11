@@ -196,6 +196,39 @@ public partial class DeviceControllerView : UserControl
             defaultExt: "txt");
     }
 
+    /// <summary>"Copy" in the Raw Packet Trace header — whole trace to clipboard.</summary>
+    private async void OnCopyTraceClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DeviceControllerViewModel vm) return;
+        var text = string.Join(Environment.NewLine, vm.TraceLines);
+        await CopyToClipboardAsync(text);
+    }
+
+    /// <summary>"Copy" in the Decoded Frame header — whole breakdown to clipboard.</summary>
+    private async void OnCopyDecodedClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DeviceControllerViewModel vm) return;
+        var sb = new System.Text.StringBuilder(1024);
+        sb.AppendLine(vm.LastDecodedFrameHeader ?? "Decoded Frame");
+        foreach (var row in vm.LastDecodedFrameRows)
+        {
+            sb.AppendLine(
+                $"{row.Position,-6} " +
+                $"{row.Label,-14} " +
+                $"{row.HexValue,-8} " +
+                $"{row.Meaning}");
+        }
+        await CopyToClipboardAsync(sb.ToString());
+    }
+
+    /// <summary>Put text on the system clipboard via the window's TopLevel.</summary>
+    private async Task CopyToClipboardAsync(string text)
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is not null)
+            await clipboard.SetTextAsync(text);
+    }
+
     /// <summary>
     /// Shared save-text-to-file helper. Pops the platform save-file
     /// picker, writes the supplied text, and falls back to ~/Documents

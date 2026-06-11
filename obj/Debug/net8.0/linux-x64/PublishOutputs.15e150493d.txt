@@ -1,0 +1,8 @@
+E:\UIRelease\Linux-x64Single\ShockUI.pdb
+E:\UIRelease\Linux-x64Single\mwir_fov_positions.json
+E:\UIRelease\Linux-x64Single\swir_fov_positions.json
+E:\UIRelease\Linux-x64Single\visnir_fov_positions.json
+E:\UIRelease\Linux-x64Single\libHarfBuzzSharp.so
+E:\UIRelease\Linux-x64Single\libSystem.IO.Ports.Native.so
+E:\UIRelease\Linux-x64Single\libSkiaSharp.so
+E:\UIRelease\Linux-x64Single\ShockUI

@@ -29,6 +29,23 @@ public static class ObjectConverters
     public static readonly IValueConverter VideoVisibleToColumns =
         new FuncValueConverter<bool, int>(visible => visible ? 1 : 2);
 
+    /// <summary>
+    /// Computes a sensible MaxHeight for the right column's "extra" slot
+    /// (Decoded Frame + Pan/Tilt Debugger) from the shell's total height, so
+    /// that slot scrolls within one scrollbar instead of overflowing when the
+    /// window is short. We reserve headroom for the header, the fixed Log
+    /// (200) and Trace (170) panels, spacing and margins (~520px), and clamp
+    /// to a usable minimum so the area never collapses to nothing.
+    /// </summary>
+    public static readonly IValueConverter RightExtraMaxHeight =
+        new FuncValueConverter<double, double>(total =>
+        {
+            const double reserved = 540.0;   // header + log + trace + spacing
+            double avail = total - reserved;
+            if (double.IsNaN(avail) || avail < 160.0) return 160.0;
+            return avail;
+        });
+
     private sealed class AllTrueConverter : IMultiValueConverter
     {
         public object? Convert(System.Collections.Generic.IList<object?> values, Type targetType, object? parameter, CultureInfo culture)

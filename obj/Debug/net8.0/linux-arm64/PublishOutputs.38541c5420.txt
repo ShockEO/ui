@@ -1,0 +1,8 @@
+E:\UIRelease\ShockUI.pdb
+E:\UIRelease\mwir_fov_positions.json
+E:\UIRelease\swir_fov_positions.json
+E:\UIRelease\visnir_fov_positions.json
+E:\UIRelease\libHarfBuzzSharp.so
+E:\UIRelease\libSystem.IO.Ports.Native.so
+E:\UIRelease\libSkiaSharp.so
+E:\UIRelease\ShockUI

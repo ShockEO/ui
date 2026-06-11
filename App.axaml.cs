@@ -34,12 +34,19 @@ public partial class App : Application
             var panTiltSerialService = new PanTiltSerialService();
             var deviceSerialService = new DeviceSerialService();
 
+            // Single shared gamepad service. DirectInput (the D-input fallback)
+            // requires exclusive ownership of the physical device, so the two
+            // controller-driven modules MUST share one instance — two services
+            // both acquiring the same Bluetooth pad caused native heap
+            // corruption (0xC0000374) after a few minutes.
+            var gamepadService = new XboxControllerService();
+
             // ── View models ───────────────────────────────────────────────
             var cameraVm = new CameraControllerViewModel(navigationService, cameraSerialService);
-            var visnirVm = new VisNIRControllerViewModel(visnirSerialService);
+            var visnirVm = new VisNIRControllerViewModel(visnirSerialService, deviceSerialService);
             var swirVm = new SwirControllerViewModel(swirSerialService);
-            var panTiltVm = new PanTiltControllerViewModel(panTiltSerialService);
-            var deviceVm = new DeviceControllerViewModel(deviceSerialService);
+            var panTiltVm = new PanTiltControllerViewModel(panTiltSerialService, gamepadService);
+            var deviceVm = new DeviceControllerViewModel(deviceSerialService, gamepadService);
 
             // ── Master connection cascade ─────────────────────────────────
             // The System Controller (deviceVm) acts as the master. When it

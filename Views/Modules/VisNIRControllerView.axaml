@@ -253,6 +253,52 @@
                                            Foreground="#CBD5E1" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
+
+                        <!-- ════════════════════════════════════════════
+                             NUC Control — MAINTENANCE ONLY.
+                             Two sensors (RGB cmd 0x19, NIR cmd 0x1A); payload
+                             [type, 00, 00]. Sent as a SIRS frame to the System
+                             Controller (dst 0x10) over the shared device bus.
+                             Whole card hidden when maintenance is locked.
+                             ════════════════════════════════════════════ -->
+                        <Border Classes="panel-card" VerticalAlignment="Top"
+                                IsVisible="{Binding Path=IsMaintenanceUnlocked,
+                                            Source={x:Static app:AppState.Current}}">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="NUC Control  (Maintenance)"
+                                           FontSize="12" FontWeight="Bold" Foreground="#E2E8F0"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                    <!-- RGB column -->
+                                    <StackPanel Grid.Column="0" Spacing="4">
+                                        <TextBlock Text="RGB Sensor" FontWeight="SemiBold"
+                                                   Foreground="#93C5FD" FontSize="11"/>
+                                        <TextBlock Text="NUC Type" Foreground="#93C5FD" FontSize="11"/>
+                                        <ComboBox ItemsSource="{Binding NucTypeOpts}"
+                                                  SelectedIndex="{Binding RgbNucType}"/>
+                                        <TextBlock Text="{Binding RgbNucFeedback, StringFormat=Status: {0}}"
+                                                   Foreground="#CBD5E1" FontSize="11"/>
+                                        <Button Classes="console" Content="Start RGB NUC"
+                                                Command="{Binding StartRgbNucCommand}"
+                                                IsEnabled="{Binding CanSendNuc}"
+                                                Margin="0,8,0,0"/>
+                                    </StackPanel>
+                                    <!-- NIR column -->
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="NIR Sensor" FontWeight="SemiBold"
+                                                   Foreground="#93C5FD" FontSize="11"/>
+                                        <TextBlock Text="NUC Type" Foreground="#93C5FD" FontSize="11"/>
+                                        <ComboBox ItemsSource="{Binding NucTypeOpts}"
+                                                  SelectedIndex="{Binding NirNucType}"/>
+                                        <TextBlock Text="{Binding NirNucFeedback, StringFormat=Status: {0}}"
+                                                   Foreground="#CBD5E1" FontSize="11"/>
+                                        <Button Classes="console" Content="Start NIR NUC"
+                                                Command="{Binding StartNirNucCommand}"
+                                                IsEnabled="{Binding CanSendNuc}"
+                                                Margin="0,8,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Grid>
                 <!-- Single-column layout (video shown) -->
@@ -436,6 +482,46 @@
 
                             <TextBlock Text="{Binding FocusSummary}"
                                        Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- NUC Control — MAINTENANCE ONLY (single-column layout).
+                         RGB cmd 0x19, NIR cmd 0x1A; payload [type, 00, 00];
+                         SIRS frame to System Controller (dst 0x10). -->
+                    <Border Classes="panel-card" VerticalAlignment="Top"
+                            IsVisible="{Binding Path=IsMaintenanceUnlocked,
+                                        Source={x:Static app:AppState.Current}}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="NUC Control  (Maintenance)"
+                                       FontSize="12" FontWeight="Bold" Foreground="#E2E8F0"/>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="RGB Sensor" FontWeight="SemiBold"
+                                               Foreground="#93C5FD" FontSize="11"/>
+                                    <TextBlock Text="NUC Type" Foreground="#93C5FD" FontSize="11"/>
+                                    <ComboBox ItemsSource="{Binding NucTypeOpts}"
+                                              SelectedIndex="{Binding RgbNucType}"/>
+                                    <TextBlock Text="{Binding RgbNucFeedback, StringFormat=Status: {0}}"
+                                               Foreground="#CBD5E1" FontSize="11"/>
+                                    <Button Classes="console" Content="Start RGB NUC"
+                                            Command="{Binding StartRgbNucCommand}"
+                                            IsEnabled="{Binding CanSendNuc}"
+                                            Margin="0,8,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="NIR Sensor" FontWeight="SemiBold"
+                                               Foreground="#93C5FD" FontSize="11"/>
+                                    <TextBlock Text="NUC Type" Foreground="#93C5FD" FontSize="11"/>
+                                    <ComboBox ItemsSource="{Binding NucTypeOpts}"
+                                              SelectedIndex="{Binding NirNucType}"/>
+                                    <TextBlock Text="{Binding NirNucFeedback, StringFormat=Status: {0}}"
+                                               Foreground="#CBD5E1" FontSize="11"/>
+                                    <Button Classes="console" Content="Start NIR NUC"
+                                            Command="{Binding StartNirNucCommand}"
+                                            IsEnabled="{Binding CanSendNuc}"
+                                            Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>

@@ -223,7 +223,7 @@ public sealed class PanTiltSerialService : IDisposable
 
     /// <summary>§3.3.1  General Status – poll system/motor/IMU health.</summary>
     public void SendGeneralStatusRequest()
-        => Send(PanTiltCommandId.GeneralStatus, [0x55, 0x00]);
+        => Send(PanTiltCommandId.GeneralStatus, [0x00, 0x00]);
 
     /// <summary>§3.3.2.1  Motor Control GET – read current mode, position, speed.</summary>
     public void SendMotorControlGet()
@@ -273,41 +273,52 @@ public sealed class PanTiltSerialService : IDisposable
         => Send(PanTiltCommandId.StabControlGet, [0x00, 0x00]);
 
     /// <summary>
-    /// §3.3.3.3  Stab Control SET – set stabilisation mode and EKF world-angle targets.
+    /// §3.3.3.3  Stab Control SET – set stabilisation mode, EKF world-angle
+    /// targets and pan/tilt nudge rates.
     ///
-    /// <paramref name="panMode"/> / <paramref name="tiltMode"/>:
-    ///   0=Safety/Damping, 1=Rate/Velocity, 2=Position, 3=Stabilised.
-    /// <paramref name="panDisengage"/> / <paramref name="tiltDisengage"/>:
-    ///   true = motor PWM OFF.
-    /// <paramref name="ekfPitchTarget"/> / <paramref name="ekfYawTarget"/>:
-    ///   Extended Kalman Filter world-angle targets (int32 LE, encoder ticks).
-    ///   Only used when mode = 0x03 (Stabilised). Pass 0 for other modes.
+    /// Verified wire layout (20-byte payload, length 0x14):
+    ///   [0]      panCtrl   = (panMode &lt;&lt; 1) | disengage
+    ///   [1]      tiltCtrl  = (tiltMode &lt;&lt; 1) | disengage
+    ///   [2..5]   EKF Pitch target — float32 LE, DEGREES
+    ///   [6..9]   EKF Yaw   target — float32 LE, DEGREES
+    ///   [10..13] Pan nudge rate   — int32 LE, encoder ticks (deg/s × 2^21/360)
+    ///   [14..17] Tilt nudge rate  — int32 LE, encoder ticks (deg/s × 2^21/360)
+    ///   [18..19] reserve (0x00 0x00)
+    ///
+    /// EKF targets are world angles in degrees (IEEE-754 float), used when the
+    /// axis mode = Stabilised. Nudge rates feed the Xbox-controller stab nudge.
+    /// Pass 0 for any field not in use.
     /// </summary>
     public void SendStabControlSet(
         byte panMode, bool panDisengage,
         byte tiltMode, bool tiltDisengage,
-        int ekfPitchTarget = 0,
-        int ekfYawTarget = 0)
+        float ekfPitchTargetDeg = 0f,
+        float ekfYawTargetDeg = 0f,
+        int panNudgeTicks = 0,
+        int tiltNudgeTicks = 0)
     {
         byte panCtrl = (byte)((panMode & 0x03) << 1 | (panDisengage ? 0x01 : 0x00));
         byte tiltCtrl = (byte)((tiltMode & 0x03) << 1 | (tiltDisengage ? 0x01 : 0x00));
 
-        // Length = 0x0C (12 bytes) per SRS §3.3.3.3
-        var p = new byte[12];
+        // Length = 0x14 (20 bytes) per the verified C2000 frame breakdown.
+        var p = new byte[20];
         p[0] = panCtrl;
         p[1] = tiltCtrl;
-        WriteInt32Le(p, 2, ekfPitchTarget);   // bytes 13-16 in full frame
-        WriteInt32Le(p, 6, ekfYawTarget);     // bytes 17-20 in full frame
-        // p[10..11] = reserve
+        WriteFloatLe(p, 2, ekfPitchTargetDeg);   // EKF Pitch (deg, float32)
+        WriteFloatLe(p, 6, ekfYawTargetDeg);     // EKF Yaw   (deg, float32)
+        WriteInt32Le(p, 10, panNudgeTicks);      // Pan nudge rate (ticks)
+        WriteInt32Le(p, 14, tiltNudgeTicks);     // Tilt nudge rate (ticks)
+        // p[18..19] = reserve
 
         Send(PanTiltCommandId.StabControlSet, p);
 
         // Mirror EKF targets to sim state so the Stab GET response shows
-        // the requested values consistently.
+        // the requested values consistently. Sim state stores encoder ticks,
+        // so convert the degree targets using the verified scale.
         if (_isSimConnected)
         {
-            _simEkfPitch = ekfPitchTarget;
-            _simEkfYaw = ekfYawTarget;
+            _simEkfPitch = (int)Math.Round(ekfPitchTargetDeg * TicksPerDegree);
+            _simEkfYaw = (int)Math.Round(ekfYawTargetDeg * TicksPerDegree);
         }
     }
 
@@ -621,6 +632,17 @@ public sealed class PanTiltSerialService : IDisposable
 
     private static void WriteInt32Le(byte[] buf, int off, int v)
         => WriteUInt32Le(buf, off, (uint)v);
+
+    /// <summary>Write an IEEE-754 float32 in little-endian byte order.</summary>
+    private static void WriteFloatLe(byte[] buf, int off, float v)
+        => WriteUInt32Le(buf, off, BitConverter.SingleToUInt32Bits(v));
+
+    /// <summary>
+    /// Encoder ticks per degree for the 21-bit Zettlex SSI scale used by the
+    /// PTSC: a full revolution (360°) maps to 2^21 ticks. Verified against the
+    /// C2000 reference frames (e.g. +20°/s → 116508 ticks, −10° → −58254).
+    /// </summary>
+    public const double TicksPerDegree = 2097152.0 / 360.0;   // 2^21 / 360 ≈ 5825.4222
 
     public void Dispose()
     {

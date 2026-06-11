@@ -185,11 +185,19 @@
               </StackPanel>
             </Border>
 
-            <Button Classes="cmd"
-                    Content="Show Controller"
-                    HorizontalAlignment="Left"
-                    Command="{Binding ToggleControllerVisualCommand}"
-                    IsVisible="{Binding !ShowControllerVisual}"/>
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        IsVisible="{Binding !ShowControllerVisual}">
+              <Button Classes="cmd"
+                      Content="Show Controller"
+                      HorizontalAlignment="Left"
+                      Command="{Binding ToggleControllerVisualCommand}"/>
+              <Border Background="#14532D" BorderBrush="#166534" BorderThickness="1"
+                      CornerRadius="10" Padding="8,2" VerticalAlignment="Center"
+                      IsVisible="{Binding IsPhysicalControllerConnected}">
+                <TextBlock Text="● Controller connected" FontSize="11" FontWeight="SemiBold"
+                           Foreground="#DCFCE7" VerticalAlignment="Center"/>
+              </Border>
+            </StackPanel>
 
             <!--
               The 4 SRS sub-sections. When the video feed is hidden we have
@@ -201,22 +209,22 @@
             <Grid ColumnDefinitions="*,*" ColumnSpacing="8"
                   IsVisible="{Binding !$parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
               <StackPanel Grid.Column="0" Spacing="8">
-                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
                 <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MotorControlTemplate}"/>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource IbitTemplate}"/>
               </StackPanel>
               <StackPanel Grid.Column="1" Spacing="8">
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
                 <ContentControl Content="{Binding}" ContentTemplate="{StaticResource StabControlTemplate}"/>
-                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource IbitTemplate}"/>
               </StackPanel>
             </Grid>
 
             <!-- 1-col sub-section stack (video shown) -->
             <StackPanel Spacing="8"
                         IsVisible="{Binding $parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
-              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
               <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MotorControlTemplate}"/>
-              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource StabControlTemplate}"/>
               <ContentControl Content="{Binding}" ContentTemplate="{StaticResource IbitTemplate}"/>
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource StabControlTemplate}"/>
             </StackPanel>
 
           </StackPanel>
@@ -512,16 +520,16 @@
                   <ComboBox ItemsSource="{Binding ControlModeOpts}" SelectedIndex="{Binding SetStabPanMode}"/>
                   <CheckBox Content="Pan Disengage"
                             IsChecked="{Binding SetStabPanDisengage}" Foreground="#E2E8F0"/>
-                  <TextBlock Classes="label" Text="EKF Pitch Target (ticks)"/>
-                  <NumericUpDown Value="{Binding SetEkfPitchTarget}" Minimum="-2097151" Maximum="2097151"/>
+                  <TextBlock Classes="label" Text="EKF Pitch Target (°)"/>
+                  <NumericUpDown Value="{Binding SetEkfPitchTarget}" Minimum="-180" Maximum="180" Increment="0.5"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Spacing="4">
                   <TextBlock Classes="label" Text="Tilt Stab Mode"/>
                   <ComboBox ItemsSource="{Binding ControlModeOpts}" SelectedIndex="{Binding SetStabTiltMode}"/>
                   <CheckBox Content="Tilt Disengage"
                             IsChecked="{Binding SetStabTiltDisengage}" Foreground="#E2E8F0"/>
-                  <TextBlock Classes="label" Text="EKF Yaw Target (ticks)"/>
-                  <NumericUpDown Value="{Binding SetEkfYawTarget}" Minimum="-2097151" Maximum="2097151"/>
+                  <TextBlock Classes="label" Text="EKF Yaw Target (°)"/>
+                  <NumericUpDown Value="{Binding SetEkfYawTarget}" Minimum="-180" Maximum="180" Increment="0.5"/>
                 </StackPanel>
               </Grid>
               <Button Classes="cmd" Content="Send Stab SET"

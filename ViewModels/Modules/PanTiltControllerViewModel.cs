@@ -21,7 +21,7 @@ public sealed partial class PanTiltControllerViewModel : ViewModelBase
     private readonly PanTiltSerialService _service;
 
     /// <summary>Xbox-controller polling/event service. Created in the ctor; runs in the background.</summary>
-    private readonly XboxControllerService _controller = new();
+    private readonly XboxControllerService _controller;
 
     /// <summary>Last snapshot — bound to the visual.</summary>
     [ObservableProperty] private XboxControllerState? controllerState;
@@ -136,9 +136,9 @@ public sealed partial class PanTiltControllerViewModel : ViewModelBase
     [ObservableProperty] private byte setStabTiltMode = 3;
     [ObservableProperty] private bool setStabTiltDisengage;
 
-    // EKF world-angle targets (Stab SET §3.3.3.3) – encoder ticks, int32
-    [ObservableProperty] private int setEkfPitchTarget;
-    [ObservableProperty] private int setEkfYawTarget;
+    // EKF world-angle targets (Stab SET §3.3.3.3) – DEGREES, float32 on the wire
+    [ObservableProperty] private float setEkfPitchTarget;
+    [ObservableProperty] private float setEkfYawTarget;
 
     // EKF estimation feedback (Stab SET response §3.3.3.4)
     [ObservableProperty] private int fbEkfPitch;
@@ -242,9 +242,10 @@ public sealed partial class PanTiltControllerViewModel : ViewModelBase
     // -----------------------------------------------------------------------
     // Ctor
     // -----------------------------------------------------------------------
-    public PanTiltControllerViewModel(PanTiltSerialService service)
+    public PanTiltControllerViewModel(PanTiltSerialService service, XboxControllerService controller)
     {
         _service = service;
+        _controller = controller;
         _service.SetSimulationMode(IsSimulationMode);
 
         _service.StatusChanged += s =>

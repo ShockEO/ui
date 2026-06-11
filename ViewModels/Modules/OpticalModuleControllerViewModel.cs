@@ -735,7 +735,7 @@ public partial class OpticalModuleControllerViewModel : ViewModelBase
             : $"{label}: {string.Join(" | ", parts)}";
     }
 
-    private void ShowInfo(string text)
+    protected void ShowInfo(string text)
     {
         BannerText = text;
         BannerBackground = Brush.Parse("#1E3A5F");

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -20,14 +21,68 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     private readonly DeviceSerialService _service;
 
     /// <summary>Xbox controller polling service. Same instance shape as the PanTilt module — but here mapped to the SIRS §3.3.5 PanTilt command.</summary>
-    private readonly XboxControllerService _controller = new();
+    private readonly XboxControllerService _controller;
 
     [ObservableProperty] private XboxControllerState? controllerState;
     [ObservableProperty] private bool showControllerVisual = true;
     [ObservableProperty] private bool isPhysicalControllerConnected;
 
+    // ── Controller drive mode ────────────────────────────────────────────
+    // The controller may only drive the turret in Rate/Velocity (0x01) or
+    // Stabilised (0x03) mode. 0x00 = OFF: sticks are ignored. The operator
+    // chooses the mode explicitly (buttons in the controller card), which
+    // both arms the sticks AND sends the matching mode to the PTSC.
+    [ObservableProperty] private byte controllerDriveMode;   // 0=Off, 1=Rate, 3=Stabilised
+
+    /// <summary>True when the controller is allowed to drive motion.</summary>
+    public bool IsControllerArmed => ControllerDriveMode is 0x01 or 0x03;
+
+    /// <summary>Human label for the active controller mode.</summary>
+    public string ControllerModeText => ControllerDriveMode switch
+    {
+        0x01 => "RATE / VELOCITY",
+        0x03 => "STABILISED",
+        _ => "OFF — select a mode to enable sticks",
+    };
+
+    public bool IsControllerModeRate => ControllerDriveMode == 0x01;
+    public bool IsControllerModeStab => ControllerDriveMode == 0x03;
+    public bool IsControllerModeOff => ControllerDriveMode == 0x00;
+
+    partial void OnControllerDriveModeChanged(byte value)
+    {
+        OnPropertyChanged(nameof(IsControllerArmed));
+        OnPropertyChanged(nameof(ControllerModeText));
+        OnPropertyChanged(nameof(IsControllerModeRate));
+        OnPropertyChanged(nameof(IsControllerModeStab));
+        OnPropertyChanged(nameof(IsControllerModeOff));
+        OnPropertyChanged(nameof(IsControllerInteractionEnabled));
+    }
+
+    [RelayCommand]
+    private void SetControllerModeOff() => ControllerDriveMode = 0x00;
+
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task SetControllerModeRate()
+    {
+        ControllerDriveMode = 0x01;
+        // Arm the axes in Rate mode (Active) on the PTSC.
+        await _service.SendStabControlAsync(panMode: 0x01, panDisengage: false,
+                                            tiltMode: 0x01, tiltDisengage: false);
+        ShowInfo("Controller mode: RATE / VELOCITY.");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task SetControllerModeStab()
+    {
+        ControllerDriveMode = 0x03;
+        await _service.SendStabControlAsync(panMode: 0x03, panDisengage: false,
+                                            tiltMode: 0x03, tiltDisengage: false);
+        ShowInfo("Controller mode: STABILISED.");
+    }
+
     public bool IsControllerInteractionEnabled =>
-        IsConnected && !IsPhysicalControllerConnected;
+        IsConnected && !IsPhysicalControllerConnected && IsControllerArmed;
     partial void OnIsPhysicalControllerConnectedChanged(bool value)
         => OnPropertyChanged(nameof(IsControllerInteractionEnabled));
 
@@ -35,7 +90,37 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     private double _speedMultiplier = 1.0;
 
     /// <summary>Max raw motor speed value when stick is fully deflected. SIRS uses ushort for speed so this is the magnitude only.</summary>
-    private const ushort MaxStickSpeed = 1000;
+    // Full stick deflection maps to this slew rate (degrees/second). The
+    // service converts deg/s → PTSC ticks (2^21/360) when building the frame.
+    private const double MaxStickSpeedDps = 30.0;
+
+    // Maintenance-only fine motor control: scales the stick slew rate down so
+    // the operator can test slow, precise movement. When enabled, full stick
+    // deflection maps to MaxStickSpeedDps * FineControlFactor instead.
+    private const double FineControlFactor = 0.15;
+    [ObservableProperty] private bool fineControlEnabled;
+
+    public string FineControlText => FineControlEnabled
+        ? $"Fine control ON ({MaxStickSpeedDps * FineControlFactor:0.#}°/s max)"
+        : $"Fine control OFF ({MaxStickSpeedDps:0.#}°/s max)";
+
+    partial void OnFineControlEnabledChanged(bool value)
+        => OnPropertyChanged(nameof(FineControlText));
+
+    [RelayCommand]
+    private void ToggleFineControl() => FineControlEnabled = !FineControlEnabled;
+
+    // Invert controller axes (both pan and tilt) for operators who prefer the
+    // opposite stick convention.
+    [ObservableProperty] private bool invertControls;
+
+    public string InvertControlsText => InvertControls ? "Inverted" : "Normal";
+
+    partial void OnInvertControlsChanged(bool value)
+        => OnPropertyChanged(nameof(InvertControlsText));
+
+    [RelayCommand]
+    private void ToggleInvertControls() => InvertControls = !InvertControls;
 
     /// <summary>True if last frame had non-zero stick — for explicit stop on return-to-centre.</summary>
     private bool _wasMoving;
@@ -59,27 +144,19 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     // General Status (§3.3.1)
     // -----------------------------------------------------------------------
     [ObservableProperty] private string systemState = "—";
-    [ObservableProperty] private uint operationalHours;
+    [ObservableProperty] private bool systemReady;
     [ObservableProperty] private bool powerFailure;
-    [ObservableProperty] private bool fibreError;
     [ObservableProperty] private bool imuError;
-    [ObservableProperty] private bool lrfNotSafe;
-    [ObservableProperty] private bool lpiNotSafe;
-    [ObservableProperty] private ushort humidityPercent;
-    [ObservableProperty] private uint pressurePsi;
-    [ObservableProperty] private short temperatureCelsius;
-    [ObservableProperty] private bool humidityTriggered;
-    [ObservableProperty] private bool pressureTriggered;
-    [ObservableProperty] private bool tempOutOfRange;
-    [ObservableProperty] private string mwirNucMode = "—";
-    [ObservableProperty] private bool mwirCoolerBusy;
-    [ObservableProperty] private bool mwirMotorFault;
-    [ObservableProperty] private bool nirMotorFault;
+    [ObservableProperty] private bool panEncoderError;
+    [ObservableProperty] private bool tiltEncoderError;
+    [ObservableProperty] private bool panAdcError;
+    [ObservableProperty] private bool tiltAdcError;
+    [ObservableProperty] private bool motorBrakeOn;
     [ObservableProperty] private bool panMotorFault;
     [ObservableProperty] private bool tiltMotorFault;
-    [ObservableProperty] private ushort lastError;
-    [ObservableProperty] private bool lrfFault;
-    [ObservableProperty] private bool lpiFault;
+    [ObservableProperty] private string genPanMode = "—";
+    [ObservableProperty] private string genTiltMode = "—";
+    [ObservableProperty] private string busVoltage = "—";
 
     // -----------------------------------------------------------------------
     // Boresight (§3.3.2)
@@ -95,12 +172,41 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     // -----------------------------------------------------------------------
     // Pan / Tilt (§3.3.5)
     // -----------------------------------------------------------------------
-    [ObservableProperty] private byte panMode = 1;  // 1=position, 2=speed
-    [ObservableProperty] private byte tiltMode = 1;
+    [ObservableProperty] private byte panMode = 2;   // 0=Safe 1=Rate 2=Position 3=Stabilised
+    [ObservableProperty] private byte tiltMode = 2;
+
+    // Maintenance-only Pan/Tilt debugger: last-sent control bytes + scaled values.
+    [ObservableProperty] private string ptDbgPanCtrl = "—";
+
+    // §3.3 GET Stab Control (0x0A) decoded telemetry (52-byte response).
+    [ObservableProperty] private string stabUptime = "—";
+    [ObservableProperty] private string stabImu = "—";
+    [ObservableProperty] private string stabAccel = "—";
+    [ObservableProperty] private string stabGyro = "—";
+    [ObservableProperty] private string stabTemp = "—";
+    [ObservableProperty] private string stabEkf = "—";
+    [ObservableProperty] private string stabNudge = "—";
+    [ObservableProperty] private string lastStabStatusPolled = "—";
+
+    // §3.3.5 Motor Status (0x08) decoded telemetry.
+    [ObservableProperty] private string motorPanAngle = "—";
+    [ObservableProperty] private string motorTiltAngle = "—";
+    [ObservableProperty] private string motorPanSpeed = "—";
+    [ObservableProperty] private string motorTiltSpeed = "—";
+    [ObservableProperty] private string motorPanMode = "—";
+    [ObservableProperty] private string motorTiltMode = "—";
+    [ObservableProperty] private string lastMotorStatusPolled = "—";
+    [ObservableProperty] private string ptDbgTiltCtrl = "—";
+    [ObservableProperty] private string ptDbgPanAngle = "—";
+    [ObservableProperty] private string ptDbgTiltAngle = "—";
+    [ObservableProperty] private string ptDbgPanSpeed = "—";
+    [ObservableProperty] private string ptDbgTiltSpeed = "—";
     [ObservableProperty] private double panAngleDeg;
     [ObservableProperty] private double tiltAngleDeg;
-    [ObservableProperty] private ushort panSpeed = 100;
-    [ObservableProperty] private ushort tiltSpeed = 100;
+    // Speed in deg/s. Signed: in Rate mode the sign sets direction
+    // (negative = reverse). In Position mode only magnitude is used.
+    [ObservableProperty] private int panSpeed = 100;
+    [ObservableProperty] private int tiltSpeed = 100;
     [ObservableProperty] private double panFeedbackDeg;
     [ObservableProperty] private double tiltFeedbackDeg;
 
@@ -147,8 +253,8 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     [ObservableProperty] private byte mwirEdgeMode;       // 0=off,1-3=sharpness
     [ObservableProperty] private byte mwirContrastMode;   // 0=none,1=global,2=LACE
     [ObservableProperty] private byte mwirNucRequest;     // 0=1pt,1=2pt,2=3pt,3=factory
-    [ObservableProperty] private bool mwirDeadPixelEnable = true;
-    [ObservableProperty] private bool mwirNoiseSuppEnable = true;
+    [ObservableProperty] private bool mwirDeadPixelEnable = false;
+    [ObservableProperty] private bool mwirNoiseSuppEnable = false;
     [ObservableProperty] private bool mwirUpscaleEnable = true;
     [ObservableProperty] private byte mwirPolarityMode;   // 0=white hot,1=black hot,2=colour
 
@@ -158,19 +264,19 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     [ObservableProperty] private byte nirEdgeMode;
     [ObservableProperty] private byte nirContrastMode;
     [ObservableProperty] private byte nirColourMatrix;    // 0=factory,1=AWB
-    [ObservableProperty] private bool nirDeadPixelEnable = true;
-    [ObservableProperty] private bool nirNoiseSuppEnable = true;
+    [ObservableProperty] private bool nirDeadPixelEnable = false;
+    [ObservableProperty] private bool nirNoiseSuppEnable = false;
 
     // RGB (visible-spectrum) image-enhancement state. Mirrors the NIR
     // controls; same enum codes (Off/Low/Med/High for edge, None/Low/
     // Med/High for contrast).
     [ObservableProperty] private byte rgbEdgeMode;
     [ObservableProperty] private byte rgbContrastMode;
-    [ObservableProperty] private bool rgbDeadPixelEnable = true;
-    [ObservableProperty] private bool rgbNoiseSuppEnable = true;
+    [ObservableProperty] private bool rgbDeadPixelEnable = false;
+    [ObservableProperty] private bool rgbNoiseSuppEnable = false;
 
     // Exposure §3.3.x — NIR and VIS sensors get auto/manual + gain +
-    // manual exposure value (microseconds, IEEE-754 float on the wire).
+    // manual exposure value (milliseconds, IEEE-754 float on the wire).
     [ObservableProperty] private bool nirExposureManual;
     [ObservableProperty] private byte nirExposureGain = 4;
     [ObservableProperty] private float nirExposureValue = 30.0f;
@@ -182,9 +288,9 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     // LRF (§3.3.11 – §3.3.13)
     // -----------------------------------------------------------------------
     [ObservableProperty] private byte lrfMeasurementMode; // dropdown index; mapped via LrfModeBytes
-    [ObservableProperty] private uint lrfRange1;
-    [ObservableProperty] private uint lrfRange2;
-    [ObservableProperty] private uint lrfRange3;
+    [ObservableProperty] private double lrfRange1;
+    [ObservableProperty] private double lrfRange2;
+    [ObservableProperty] private double lrfRange3;
     [ObservableProperty] private ushort lrfMinRange = 50;
     [ObservableProperty] private ushort lrfMaxRange = 20000;
     [ObservableProperty] private bool lrfSetRange;
@@ -235,15 +341,12 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     partial void OnLastGeneralStatusPolledChanged(DateTime? value)
         => OnPropertyChanged(nameof(LastGeneralStatusPolledText));
 
-    [ObservableProperty] private string ibitMwirZg1 = "—";
-    [ObservableProperty] private string ibitMwirZg2 = "—";
-    [ObservableProperty] private string ibitMwirSolenoid = "—";
-    [ObservableProperty] private string ibitMwirTec = "—";
-    [ObservableProperty] private string ibitNirZg1 = "—";
-    [ObservableProperty] private string ibitNirZg2 = "—";
     [ObservableProperty] private string ibitPanMotor = "—";
     [ObservableProperty] private string ibitTiltMotor = "—";
-    [ObservableProperty] private string ibitLrfStatus = "—";
+    [ObservableProperty] private string ibitSensor = "—";
+    [ObservableProperty] private string ibitPanExt = "—";
+    [ObservableProperty] private string ibitTiltExt = "—";
+    [ObservableProperty] private string ibitImu = "—";
 
     // ── Extended LRF state (Noptel LRX ICD O50090DE) ─────────────────
     // Driven by the LRX Status, Diagnostics, Identification, and
@@ -284,7 +387,37 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     [ObservableProperty] private bool lrfHasOpticalCrosstalkResult;
 
     // Alignment pointer (Noptel §3.5)
+    // When the user (un)ticks the checkbox, the property setter fires the
+    // matching ON/OFF command. _suppressPointerSend stops the response
+    // handler — which mirrors the device echo back into LrfPointerOn —
+    // from triggering a second (looping) send.
     [ObservableProperty] private bool lrfPointerOn;
+
+    private bool _suppressPointerSend;
+
+    partial void OnLrfPointerOnChanged(bool value)
+    {
+        if (_suppressPointerSend) return;
+        if (!CanSend) return;
+        _ = SendLrfPointerAsync(value);
+    }
+
+    private async Task SendLrfPointerAsync(bool on)
+    {
+        await _service.SendLrfAlignmentPointerAsync(on);
+        ShowInfo($"LRF pointer command sent: {(on ? "ON" : "OFF")}.");
+    }
+
+    /// <summary>
+    /// Updates the checkbox state from a device echo/status frame WITHOUT
+    /// re-issuing a pointer command (avoids the send/echo loop).
+    /// </summary>
+    private void SetPointerStateFromDevice(bool on)
+    {
+        _suppressPointerSend = true;
+        try { LrfPointerOn = on; }
+        finally { _suppressPointerSend = false; }
+    }
 
     // Identification (Noptel §3.10)
     [ObservableProperty] private string lrfDeviceId = "—";
@@ -331,7 +464,6 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         "7: 460800",
     };
 
-    [ObservableProperty] private string ibitEnvironmental = "—";
 
     // -----------------------------------------------------------------------
     // UI / Log
@@ -420,7 +552,10 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
 
     public string[] FovOptions => ["Get", "WFOV", "MFOV", "NFOV", "VNFOV"];
     public string[] FocusModeOpts => ["Get", "Set Position", "Set Speed", "Infinity", "Stop"];
-    public string[] PanTiltModeOpts => ["Get", "Position", "Speed"];
+    // Index maps directly to the PTSC ControlMode enum value:
+    //   0 = Safe/Damping, 1 = Rate/Velocity, 2 = Position, 3 = Stabilised.
+    // Control byte = (mode << 1) | active-bit, so e.g. Position+Active = 0x04.
+    public string[] PanTiltModeOpts => ["Safe / Damping", "Rate / Velocity", "Position", "Stabilised"];
     public string[] StabModeOpts => ["Activate", "Deactivate", "Get"];
     public string[] NucModeOpts => ["2 Point", "3 Point", "Factory Map"];
     public string[] EdgeModeOpts => ["Off", "Sharpness 1", "Sharpness 2", "Sharpness 3"];
@@ -451,9 +586,10 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     // -----------------------------------------------------------------------
     // Constructor
     // -----------------------------------------------------------------------
-    public DeviceControllerViewModel(DeviceSerialService service)
+    public DeviceControllerViewModel(DeviceSerialService service, XboxControllerService controller)
     {
         _service = service;
+        _controller = controller;
         _service.SetSimulationMode(IsSimulationMode);
 
         _service.StatusChanged += s =>
@@ -499,11 +635,15 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         _controller.ControllerConnected += () => Dispatcher.UIThread.Post(() =>
         {
             IsPhysicalControllerConnected = true;
-            ShowControllerVisual = false;
+            // Keep the on-screen controller visible so the mode selector stays
+            // accessible. The virtual sticks become non-interactive (physical
+            // pad drives instead) but the card and mode buttons remain shown.
         });
         _controller.ControllerDisconnected += () => Dispatcher.UIThread.Post(() =>
         {
             IsPhysicalControllerConnected = false;
+            // Physical pad gone — bring the on-screen (virtual) controller back.
+            ShowControllerVisual = true;
         });
         _controller.Start();
     }
@@ -647,13 +787,83 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     // -----------------------------------------------------------------------
     // §3.3.5  Pan / Tilt
     // -----------------------------------------------------------------------
+    // Mechanical travel limits (deg). The C2000 Safety Supervisor enforces its
+    // own soft-stops; these GUI limits prevent obviously-out-of-range commands
+    // and surface a clear error instead of silently truncating the input.
+    private const double TiltMinDeg = -40.0;
+    private const double TiltMaxDeg = 80.0;
+    private const double PanMinDeg = -180.0;
+    private const double PanMaxDeg = 180.0;
+
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendPanTilt()
     {
-        int panMilli = (int)(PanAngleDeg * 1000);
-        int tiltMilli = (int)(TiltAngleDeg * 1000);
-        await _service.SendPanTiltAsync(PanMode, TiltMode, panMilli, tiltMilli, PanSpeed, TiltSpeed);
+        // In Position mode, validate against mechanical limits. If out of range,
+        // show an error and hold at the current feedback position rather than
+        // sending a value the Supervisor would reject (notes §Safety Stops).
+        bool panIsPos = PanMode == 0x02;
+        bool tiltIsPos = TiltMode == 0x02;
+
+        double panTarget = PanAngleDeg;
+        double tiltTarget = TiltAngleDeg;
+        bool clamped = false;
+
+        if (panIsPos && (PanAngleDeg < PanMinDeg || PanAngleDeg > PanMaxDeg))
+        {
+            double limited = Math.Clamp(PanAngleDeg, PanMinDeg, PanMaxDeg);
+            ShowWarning($"Pan target {PanAngleDeg:F1}° is outside the allowed range " +
+                        $"({PanMinDeg:F0}° to {PanMaxDeg:F0}°). Not sent.");
+            PanAngleDeg = limited;     // snap the box to the nearest valid limit
+            clamped = true;
+        }
+        if (tiltIsPos && (TiltAngleDeg < TiltMinDeg || TiltAngleDeg > TiltMaxDeg))
+        {
+            double limited = Math.Clamp(TiltAngleDeg, TiltMinDeg, TiltMaxDeg);
+            ShowWarning($"Tilt target {TiltAngleDeg:F1}° is outside the allowed range " +
+                        $"({TiltMinDeg:F0}° to {TiltMaxDeg:F0}°). Not sent.");
+            TiltAngleDeg = limited;
+            clamped = true;
+        }
+        if (clamped) return;   // do not send an out-of-range command
+
+        // Service scales degrees / deg-s to PTSC ticks (2^21/360) internally.
+        await _service.SendPanTiltAsync(PanMode, TiltMode,
+            panTarget, tiltTarget, PanSpeed, TiltSpeed);
+
+        // Maintenance debugger: reflect exactly what was encoded.
+        byte panCtrl = (byte)((PanMode & 0x03) << 1);   // active (bit0=0)
+        byte tiltCtrl = (byte)((TiltMode & 0x03) << 1);
+        PtDbgPanCtrl = $"0x{panCtrl:X2}  (mode {PanMode} = {PtModeName(PanMode)}, Active)";
+        PtDbgTiltCtrl = $"0x{tiltCtrl:X2}  (mode {TiltMode} = {PtModeName(TiltMode)}, Active)";
+        PtDbgPanAngle = $"{panTarget:F2}°  →  {(int)Math.Round(panTarget * 2097152.0 / 360.0)} ticks";
+        PtDbgTiltAngle = $"{tiltTarget:F2}°  →  {(int)Math.Round(tiltTarget * 2097152.0 / 360.0)} ticks";
+        PtDbgPanSpeed = $"{PanSpeed}°/s  →  {(int)Math.Round(PanSpeed * 2097152.0 / 360.0)} ticks";
+        PtDbgTiltSpeed = $"{TiltSpeed}°/s  →  {(int)Math.Round(TiltSpeed * 2097152.0 / 360.0)} ticks";
+
         ShowInfo("Pan/Tilt command sent.");
+    }
+
+    private static string PtModeName(byte m) => m switch
+    {
+        0 => "Safe",
+        1 => "Rate",
+        2 => "Position",
+        3 => "Stabilised",
+        _ => "?"
+    };
+
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task GetMotorStatus()
+    {
+        await _service.SendMotorStatusAsync();
+        ShowInfo("Motor status poll sent.");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task GetStabStatus()
+    {
+        await _service.SendStabStatusAsync();
+        ShowInfo("Stab status poll sent.");
     }
 
     // -----------------------------------------------------------------------
@@ -662,8 +872,30 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendStabControl()
     {
-        await _service.SendStabControlAsync(StabCommandMode);
-        ShowInfo("Stab control sent.");
+        // The Stab card mode is always Stabilised (3); the dropdown selects the
+        // Active/Deactivated state (the bit-0 of the control byte) or a Get poll.
+        //   Activate   → mode 3, Active       → (3<<1)|0 = 0x06
+        //   Deactivate → mode 3, Deactivated  → (3<<1)|1 = 0x07
+        //   Get        → Stab Status poll (0x0A)
+        switch (StabCommandMode)
+        {
+            case 0: // Activate
+                await _service.SendStabControlAsync(
+                    panMode: 0x03, panDisengage: false,
+                    tiltMode: 0x03, tiltDisengage: false);
+                ShowInfo("Stab activated (0x06).");
+                break;
+            case 1: // Deactivate
+                await _service.SendStabControlAsync(
+                    panMode: 0x03, panDisengage: true,
+                    tiltMode: 0x03, tiltDisengage: true);
+                ShowInfo("Stab deactivated (0x07).");
+                break;
+            default: // Get
+                await _service.SendStabStatusAsync();
+                ShowInfo("Stab status poll sent.");
+                break;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -738,7 +970,7 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         await _service.SendNirExposureAsync(
             NirExposureManual, NirExposureGain, NirExposureValue);
         ShowInfo(NirExposureManual
-            ? $"NIR exposure set to {NirExposureValue:F1} µs (manual, gain {NirExposureGain})."
+            ? $"NIR exposure set to {NirExposureValue:F1} ms (manual, gain {NirExposureGain})."
             : $"NIR exposure set to AUTO (gain {NirExposureGain}).");
     }
 
@@ -748,7 +980,7 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         await _service.SendVisExposureAsync(
             VisExposureManual, VisExposureGain, VisExposureValue);
         ShowInfo(VisExposureManual
-            ? $"VIS exposure set to {VisExposureValue:F1} µs (manual, gain {VisExposureGain})."
+            ? $"VIS exposure set to {VisExposureValue:F1} ms (manual, gain {VisExposureGain})."
             : $"VIS exposure set to AUTO (gain {VisExposureGain}).");
     }
 
@@ -770,10 +1002,24 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     }
 
     [RelayCommand(CanExecute = nameof(CanSend))]
-    private async Task SendLrfRange()
+    private async Task GetLrfRange()
     {
-        await _service.SendLrfMeasurementRangeAsync(LrfSetRange, LrfMinRange, LrfMaxRange);
-        ShowInfo($"LRF Range command sent ({(LrfSetRange ? "Set" : "Get")}).");
+        await _service.SendLrfGetRangeAsync();
+        ShowInfo("LRF Get Range command sent.");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task SetLrfMinRange()
+    {
+        await _service.SendLrfSetMinRangeAsync(LrfMinRange);
+        ShowInfo($"LRF Set Min Range sent ({LrfMinRange} m).");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task SetLrfMaxRange()
+    {
+        await _service.SendLrfSetMaxRangeAsync(LrfMaxRange);
+        ShowInfo($"LRF Set Max Range sent ({LrfMaxRange} m).");
     }
 
     // ── Extended LRF commands (Noptel LRX ICD) ───────────────────────
@@ -790,14 +1036,6 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     {
         await _service.SendLrfOpticalCrosstalkAsync();
         ShowInfo("LRF optical-crosstalk check sent.");
-    }
-
-    [RelayCommand(CanExecute = nameof(CanSend))]
-    private async Task ToggleLrfPointer()
-    {
-        bool target = !LrfPointerOn;
-        await _service.SendLrfAlignmentPointerAsync(target);
-        ShowInfo($"LRF pointer command sent: {(target ? "ON" : "OFF")}.");
     }
 
     [RelayCommand(CanExecute = nameof(CanSend))]
@@ -869,56 +1107,136 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     // -----------------------------------------------------------------------
     // §3.3.16  IBIT
     // -----------------------------------------------------------------------
+    [ObservableProperty] private double ibitProgress;          // 0-100
+    [ObservableProperty] private bool ibitRunning;
+    [ObservableProperty] private string ibitResultText = "—";
+
+    private CancellationTokenSource? _ibitPollCts;
+
+    /// <summary>Full IBIT (Action 0x01): runs the physical self-test sweep.</summary>
     [RelayCommand(CanExecute = nameof(CanSend))]
-    private async Task SendIbit()
+    private async Task RunFullIbit()
     {
-        ShowInfo("IBIT initiated…");
-        await _service.SendIbitAsync();
+        ShowInfo("Full IBIT initiated…");
+        await StartIbitAsync(0x01);
     }
 
-    // -----------------------------------------------------------------------
-    // Maintenance: Start NUC (RGB + NIR)
-    // -----------------------------------------------------------------------
-    // Two sensors, two commands. Payload per the May 2026 NUC spec:
-    //   [0] NUC type (1 = 1-Point, 2 = 2-Point)
-    //   [1..2] reserve (0x00 0x00)
-    // The cards in the View are gated behind IsMaintenanceUnlocked, so
-    // these commands are only reachable when the operator has unlocked
-    // maintenance from the sidebar.
-
-    /// <summary>Dropdown options for the NUC type selector. Index = wire value.
-    /// 1-Point at index 1, 2-Point at index 2. Index 0 is reserved/unused
-    /// (matches typical firmware enum so 0 = "no-op").</summary>
-    public string[] NucTypeOpts => ["—", "1-Point NUC", "2-Point NUC"];
-
-    /// <summary>NUC type to send when the user clicks <em>Start RGB NUC</em>.
-    /// Default 2 (2-Point) — the most common factory recommendation.</summary>
-    [ObservableProperty] private byte rgbNucType = 2;
-
-    /// <summary>NUC type for the NIR sensor's Start-NUC command.</summary>
-    [ObservableProperty] private byte nirNucType = 2;
-
-    /// <summary>Last RGB NUC response status text — populated by the
-    /// response handler when the firmware acks the command.</summary>
-    [ObservableProperty] private string rgbNucFeedback = "—";
-
-    /// <summary>Last NIR NUC response status text.</summary>
-    [ObservableProperty] private string nirNucFeedback = "—";
-
+    /// <summary>Silent IBIT (Action 0x02): self-test without moving the gimbal.</summary>
     [RelayCommand(CanExecute = nameof(CanSend))]
-    private async Task StartRgbNuc()
+    private async Task RunSilentIbit()
     {
-        ShowInfo($"RGB NUC ({NucTypeOpts[Math.Clamp(RgbNucType, 0, NucTypeOpts.Length - 1)]}) requested…");
-        RgbNucFeedback = "Requested…";
-        await _service.SendRgbStartNucAsync(RgbNucType);
+        ShowInfo("Silent IBIT initiated…");
+        await StartIbitAsync(0x02);
     }
 
+    /// <summary>Single manual progress read (Action 0x00).</summary>
     [RelayCommand(CanExecute = nameof(CanSend))]
-    private async Task StartNirNuc()
+    private async Task ReadIbit()
     {
-        ShowInfo($"NIR NUC ({NucTypeOpts[Math.Clamp(NirNucType, 0, NucTypeOpts.Length - 1)]}) requested…");
-        NirNucFeedback = "Requested…";
-        await _service.SendNirStartNucAsync(NirNucType);
+        await _service.SendIbitReadAsync();
+    }
+
+    private async Task StartIbitAsync(byte action)
+    {
+        // Cancel any in-flight poll loop, reset UI.
+        _ibitPollCts?.Cancel();
+        IbitProgress = 0;
+        IbitResultText = "Running…";
+        IbitRunning = true;
+
+        // Kick off the test.
+        await _service.SendIbitAsync(action);
+
+        // Poll Read (0x00) at 10 Hz. The loop terminates as soon as IbitRunning
+        // is cleared (by the RX handler on completion) or the safety cap hits.
+        _ibitPollCts?.Dispose();
+        _ibitPollCts = new CancellationTokenSource();
+        var ct = _ibitPollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Safety cap: ~30 s at 10 Hz so the loop can't run forever.
+                for (int i = 0; i < 300; i++)
+                {
+                    if (ct.IsCancellationRequested || !IbitRunning || !IsConnected)
+                        break;
+                    await _service.SendIbitReadAsync();
+                    await Task.Delay(100, ct);
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                // Whatever happened, ensure we are no longer "running" so a
+                // stale loop can never keep polling.
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (IbitRunning && IbitProgress >= 100) IbitRunning = false;
+                });
+            }
+        }, ct);
+    }
+
+    /// <summary>Populate the General Status panel from a decoded response (SRS v2).</summary>
+    private void ApplyGeneralStatus(DeviceGeneralStatusResponse r)
+    {
+        LastGeneralStatusPolled = DateTime.Now;
+        SystemState = r.SystemStateText;
+        SystemReady = r.SystemReady;
+        PowerFailure = r.PowerFailure;
+        ImuError = r.ImuError;
+        PanEncoderError = r.PanEncoderError;
+        TiltEncoderError = r.TiltEncoderError;
+        PanAdcError = r.PanAdcError;
+        TiltAdcError = r.TiltAdcError;
+        MotorBrakeOn = r.MotorBrakeOn;
+        PanMotorFault = r.PanMotorFault;
+        TiltMotorFault = r.TiltMotorFault;
+        GenPanMode = r.PanModeText;
+        GenTiltMode = r.TiltModeText;
+        BusVoltage = $"{r.BusVoltageRaw} (raw)";
+    }
+
+    /// <summary>Populate the IBIT panel from a decoded response (SRS v2 layout).</summary>
+    private void ApplyIbitResponse(DeviceIbitResponse r)
+    {
+        // RX runs off the UI thread; marshal all binding updates onto it.
+        Dispatcher.UIThread.Post(() =>
+        {
+            IbitProgress = r.ProgressPercent;
+            string state = r.TestInProgress ? "In progress"
+                         : r.LastTestFailed ? "Last: FAILED"
+                         : r.LastTestPassed ? "Last: PASSED" : "Idle";
+            IbitGeneralStatus = $"{state}  •  {r.ProgressPercent}%  •  {r.FaultSummary}";
+            IbitPanMotor = r.PanMotorSummary;
+            IbitTiltMotor = r.TiltMotorSummary;
+            IbitSensor = r.SensorSummary;
+            IbitPanExt = r.PanExtSummary;
+            IbitTiltExt = r.TiltExtSummary;
+            IbitImu = r.ImuSummary;
+
+            // The test is finished when it reports 100% OR the status byte says
+            // the test is no longer in progress (PASSED/FAILED). Either way,
+            // stop polling immediately and deterministically.
+            bool finished = r.IsComplete || (!r.TestInProgress && IbitRunning);
+            if (finished && IbitRunning)
+            {
+                _ibitPollCts?.Cancel();   // stop the poll loop right now
+                OnIbitComplete(r.NoFaults, r.FaultSummary);
+            }
+        });
+    }
+
+    /// <summary>Called from the IBIT RX handler to stop polling on completion.</summary>
+    private void OnIbitComplete(bool noFaults, string faultSummary)
+    {
+        _ibitPollCts?.Cancel();
+        IbitRunning = false;
+        IbitProgress = 100;
+        IbitResultText = noFaults ? "PASS — no faults" : faultSummary;
+        if (noFaults) ShowSuccess("IBIT complete — no faults.");
+        else ShowWarning($"IBIT complete — {faultSummary}");
     }
 
     // -----------------------------------------------------------------------
@@ -962,35 +1280,72 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     // -----------------------------------------------------------------------
     private void OnResponseReceived(DeviceParsedFrame frame)
     {
+        // PTSC (dst/src 0x20) shares command bytes with EOA commands
+        // (e.g. 0x09 = PTSC MotorSet vs MwirFovChange at an EOA), so route
+        // PTSC responses by SourceId first, before the command-byte switch.
+        if (frame.SourceId == DeviceFramer.PtscDstId)
+        {
+            switch (frame.CommandId)
+            {
+                case DeviceCommandId.Ptsc.GeneralStatusGet:
+                    {
+                        var r = DeviceGeneralStatusResponse.Parse(frame.Payload);
+                        if (r is null) break;
+                        ApplyGeneralStatus(r);
+                        break;
+                    }
+                case DeviceCommandId.Ptsc.MotorSet:
+                case DeviceCommandId.Ptsc.MotorStatusGet:
+                    {
+                        var r = DevicePanTiltResponse.Parse(frame.Payload);
+                        if (r is null) break;
+                        PanFeedbackDeg = r.PanAngleDeg;
+                        TiltFeedbackDeg = r.TiltAngleDeg;
+                        LastMotorStatusPolled = DateTime.Now.ToString("HH:mm:ss");
+                        MotorPanAngle = $"{r.PanAngleDeg:F2}°";
+                        MotorTiltAngle = $"{r.TiltAngleDeg:F2}°";
+                        MotorPanSpeed = $"{r.PanSpeed:F2} °/s";
+                        MotorTiltSpeed = $"{r.TiltSpeed:F2} °/s";
+                        MotorPanMode = $"{DevicePanTiltResponse.ModeName(r.PanMode)}" +
+                                       $" ({(r.PanActive ? "Active" : "Deactivated")})";
+                        MotorTiltMode = $"{DevicePanTiltResponse.ModeName(r.TiltMode)}" +
+                                        $" ({(r.TiltActive ? "Active" : "Deactivated")})";
+                        break;
+                    }
+                case DeviceCommandId.Ptsc.Ibit:
+                    {
+                        var r = DeviceIbitResponse.Parse(frame.Payload);
+                        if (r is null) break;
+                        ApplyIbitResponse(r);
+                        break;
+                    }
+                case DeviceCommandId.Ptsc.StabStatusGet:
+                    {
+                        var r = DeviceStabStatusResponse.Parse(frame.Payload);
+                        if (r is null) break;
+                        LastStabStatusPolled = DateTime.Now.ToString("HH:mm:ss");
+                        StabUptime = $"{r.UptimeMicros / 1_000_000.0:F1} s  ({r.UptimeMicros} µs)";
+                        StabImu = r.ImuOk ? $"OK (0x{r.ImuStatus:X4})" : $"FAULT (0x{r.ImuStatus:X4})";
+                        StabAccel = $"X {r.AccelX:F3}  Y {r.AccelY:F3}  Z {r.AccelZ:F3}";
+                        StabGyro = $"X {r.GyroX:F3}  Y {r.GyroY:F3}  Z {r.GyroZ:F3}";
+                        StabTemp = $"{r.TemperatureC:F1} °C";
+                        StabEkf = $"Pitch {r.EkfPitchDeg:F2}°  Yaw {r.EkfYawDeg:F2}°";
+                        StabNudge = $"Pan {r.PanNudgeTicks} t/s  Tilt {r.TiltNudgeTicks} t/s";
+                        break;
+                    }
+                    // StabSet has no structured feedback beyond the Active flag
+                    // (handled elsewhere); acked silently.
+            }
+            return;
+        }
+
         switch (frame.CommandId)
         {
             case DeviceCommandId.GeneralStatus:
                 {
                     var r = DeviceGeneralStatusResponse.Parse(frame.Payload);
                     if (r is null) break;
-                    LastGeneralStatusPolled = DateTime.Now;
-                    SystemState = r.SystemStateText;
-                    OperationalHours = r.OperationalHours;
-                    PowerFailure = r.PowerFailure;
-                    FibreError = r.FibreError;
-                    ImuError = r.ImuError;
-                    LrfNotSafe = r.LrfNotSafe;
-                    LpiNotSafe = r.LpiNotSafe;
-                    HumidityPercent = r.HumidityPercent;
-                    PressurePsi = r.PressurePsi;
-                    TemperatureCelsius = r.TemperatureCelsius;
-                    HumidityTriggered = r.HumidityTriggered;
-                    PressureTriggered = r.PressureTriggered;
-                    TempOutOfRange = r.TemperatureOutOfRange;
-                    MwirNucMode = r.MwirNucText;
-                    MwirCoolerBusy = r.MwirCoolerBusy;
-                    MwirMotorFault = r.MwirMotorFault;
-                    NirMotorFault = r.NirMotorFault;
-                    PanMotorFault = r.PanMotorFault;
-                    TiltMotorFault = r.TiltMotorFault;
-                    LastError = r.LastError;
-                    LrfFault = r.LrfFault;
-                    LpiFault = r.LpiFault;
+                    ApplyGeneralStatus(r);
                     break;
                 }
             case DeviceCommandId.PanTiltMotorControl:
@@ -1081,40 +1436,11 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
                     MwirContrast = r.Contrast;
                     break;
                 }
-            case DeviceCommandId.RgbStartNuc:
-                {
-                    // Firmware ack — payload[0] echoes the NUC type that was
-                    // accepted. Use it to flip the feedback label.
-                    byte echoed = frame.Payload.Length > 0 ? frame.Payload[0] : (byte)0;
-                    RgbNucFeedback = $"Started ({NucTypeOpts[Math.Clamp(echoed, 0, NucTypeOpts.Length - 1)]})";
-                    break;
-                }
-            case DeviceCommandId.NirStartNuc:
-                {
-                    byte echoed = frame.Payload.Length > 0 ? frame.Payload[0] : (byte)0;
-                    NirNucFeedback = $"Started ({NucTypeOpts[Math.Clamp(echoed, 0, NucTypeOpts.Length - 1)]})";
-                    break;
-                }
             case DeviceCommandId.Ibit:
                 {
                     var r = DeviceIbitResponse.Parse(frame.Payload);
                     if (r is null) break;
-                    IbitGeneralStatus = $"Power:{(r.PowerFailure ? "FAIL" : "OK")}  " +
-                                        $"Fibre:{(r.FibreError ? "FAIL" : "OK")}  " +
-                                        $"IMU:{(r.ImuError ? "FAIL" : "OK")}";
-                    IbitMwirZg1 = r.MwirZg1Summary;
-                    IbitMwirZg2 = r.MwirZg2Summary;
-                    IbitMwirSolenoid = r.MwirSolSummary;
-                    IbitMwirTec = r.MwirTecSummary;
-                    IbitNirZg1 = r.NirZg1Summary;
-                    IbitNirZg2 = r.NirZg2Summary;
-                    IbitPanMotor = r.PanSummary;
-                    IbitTiltMotor = r.TiltSummary;
-                    IbitLrfStatus = $"B1=0x{r.LrfStatus1:X2}  B2=0x{r.LrfStatus2:X2}  B3=0x{r.LrfStatus3:X2}";
-                    IbitEnvironmental = $"Humidity:{(r.HumidityOutOfRange ? "OOR" : "OK")}  " +
-                                        $"Pressure:{(r.PressureOutOfRange ? "OOR" : "OK")}  " +
-                                        $"Temp:{(r.TempOutOfRange ? "OOR" : "OK")}";
-                    ShowSuccess("IBIT complete.");
+                    ApplyIbitResponse(r);
                     break;
                 }
             case DeviceCommandId.LrfStatusQuery:
@@ -1130,7 +1456,7 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
                     LrfNotReady = r.NotReady;
                     LrfReceiverProblem = r.ReceiverProblem;
                     LrfLaserPowerProblem = r.LaserPowerProblem;
-                    LrfPointerOn = r.PointerOn;
+                    SetPointerStateFromDevice(r.PointerOn);
                     LrfHighVoltageOutOfRange = r.HighVoltageOutOfRange;
                     LrfDcDcOutOfRange = r.DcDcOutOfRange;
                     LrfMemoryProblem = r.MemoryProblem;
@@ -1158,7 +1484,7 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
                     // Standard acknowledgement frame — pointer state echoed
                     // back as payload[0] (0 = OFF, 2 = visible ON).
                     if (frame.Payload.Length >= 1)
-                        LrfPointerOn = frame.Payload[0] == 0x02;
+                        SetPointerStateFromDevice(frame.Payload[0] == 0x02);
                     break;
                 }
             case DeviceCommandId.LrfIdentification:
@@ -1220,6 +1546,10 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         SendBoresightCommand.NotifyCanExecuteChanged();
         SendPanTiltCommand.NotifyCanExecuteChanged();
         SendStabControlCommand.NotifyCanExecuteChanged();
+        GetMotorStatusCommand.NotifyCanExecuteChanged();
+        GetStabStatusCommand.NotifyCanExecuteChanged();
+        SetControllerModeRateCommand.NotifyCanExecuteChanged();
+        SetControllerModeStabCommand.NotifyCanExecuteChanged();
         SendVideoSourceCommand.NotifyCanExecuteChanged();
         SendNirFovCommand.NotifyCanExecuteChanged();
         SendMwirFovCommand.NotifyCanExecuteChanged();
@@ -1232,10 +1562,11 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         SendVisExposureCommand.NotifyCanExecuteChanged();
         SendLrfMeasurementCommand.NotifyCanExecuteChanged();
         SendLrfStopCmmCommand.NotifyCanExecuteChanged();
-        SendLrfRangeCommand.NotifyCanExecuteChanged();
+        GetLrfRangeCommand.NotifyCanExecuteChanged();
+        SetLrfMinRangeCommand.NotifyCanExecuteChanged();
+        SetLrfMaxRangeCommand.NotifyCanExecuteChanged();
         RequestLrfStatusCommand.NotifyCanExecuteChanged();
         RequestLrfOpticalCrosstalkCommand.NotifyCanExecuteChanged();
-        ToggleLrfPointerCommand.NotifyCanExecuteChanged();
         RequestLrfIdentificationCommand.NotifyCanExecuteChanged();
         RequestLrfDiagnosticsCommand.NotifyCanExecuteChanged();
         ResetLrfErrorCounterCommand.NotifyCanExecuteChanged();
@@ -1244,9 +1575,9 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         SendMwirBcCommand.NotifyCanExecuteChanged();
         SendStream1SymbologyCommand.NotifyCanExecuteChanged();
         SendStream2SymbologyCommand.NotifyCanExecuteChanged();
-        SendIbitCommand.NotifyCanExecuteChanged();
-        StartRgbNucCommand.NotifyCanExecuteChanged();
-        StartNirNucCommand.NotifyCanExecuteChanged();
+        RunFullIbitCommand.NotifyCanExecuteChanged();
+        RunSilentIbitCommand.NotifyCanExecuteChanged();
+        ReadIbitCommand.NotifyCanExecuteChanged();
     }
 
     private void ShowInfo(string text) => ShowBanner(text, "#1E3A5F", "#2563EB", "#E2E8F0");
@@ -1361,13 +1692,24 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
     {
         Dispatcher.UIThread.Post(() => ControllerState = s);
 
+        // Controller only drives motion in Rate or Stabilised mode.
+        if (!IsControllerArmed)
+        {
+            _wasMoving = false;
+            return;
+        }
+
         double boost = 1.0 + s.RightTrigger * 1.0;
         double slow = 1.0 - s.LeftTrigger * 0.9;
         _speedMultiplier = boost * slow;
 
-        double panX = s.LeftStickX + s.RightStickX * 0.2;
-        double tiltY = s.LeftStickY + s.RightStickY * 0.2;
-        tiltY = -tiltY;
+        // Read sticks. Tilt has a fixed base inversion (stick up = tilt up).
+        double rawPanX = s.LeftStickX + s.RightStickX * 0.2;
+        double rawTiltY = -(s.LeftStickY + s.RightStickY * 0.2);
+
+        // Optional inverted-controls toggle flips BOTH axes independently.
+        double panX = InvertControls ? -rawPanX : rawPanX;
+        double tiltY = InvertControls ? -rawTiltY : rawTiltY;
 
         panX = Clamp(panX * _speedMultiplier, -1.0, 1.0);
         tiltY = Clamp(tiltY * _speedMultiplier, -1.0, 1.0);
@@ -1378,28 +1720,66 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
         bool edgeMoving = isMoving && !_wasMoving;
         bool edgeStop = !isMoving && _wasMoving;
 
-        if (edgeMoving || edgeStop || (isMoving && dueByTime))
+        // A STOP (edge from moving → not moving) is a safety action and must
+        // always be sent, even if a send is currently in flight. Movement
+        // updates are dropped (coalesced) while a send is busy so commands
+        // never pile up on the wire and outlive the stick — which is what
+        // caused the gimbal to keep moving after the stick was released.
+        if (edgeStop)
         {
-            // SIRS speed is ushort (unsigned) — direction lives in the mode byte.
-            // We use mode 0x02 to mean "move at speed" and embed direction with
-            // a high bit: 0x02 = forward, 0x03 = reverse. If your SRS uses a
-            // different convention, tweak panMode/tiltMode below.
-            byte panMode = panX == 0 ? (byte)0x00 : (panX > 0 ? (byte)0x02 : (byte)0x03);
-            byte tiltMode = tiltY == 0 ? (byte)0x00 : (tiltY > 0 ? (byte)0x02 : (byte)0x03);
-            ushort panSpeed = (ushort)Math.Abs(panX * MaxStickSpeed);
-            ushort tiltSpeed = (ushort)Math.Abs(tiltY * MaxStickSpeed);
-
-            _ = _service.SendPanTiltAsync(
-                panMode: panMode,
-                tiltMode: tiltMode,
-                panAngleMilli: 0,
-                tiltAngleMilli: 0,
-                panSpeed: panSpeed,
-                tiltSpeed: tiltSpeed);
-
+            _wasMoving = false;
             _lastMotorTx = now;
-            _wasMoving = isMoving;
+            // Force a definitive zero-velocity command; bypass the busy guard.
+            _ = SendControllerStopAsync();
+            return;
         }
+
+        if (!(edgeMoving || (isMoving && dueByTime)))
+            return;
+
+        // Drop-if-busy: if the previous controller frame is still being written,
+        // skip this tick. Only the most recent stick value matters, so there is
+        // no point queuing stale movement frames behind a slow wire.
+        if (System.Threading.Interlocked.CompareExchange(ref _controllerTxBusy, 1, 0) != 0)
+            return;
+
+        byte mode = ControllerDriveMode;
+        double maxDps = MaxStickSpeedDps * (FineControlEnabled ? FineControlFactor : 1.0);
+        double panSpeedDps = panX * maxDps;
+        double tiltSpeedDps = tiltY * maxDps;
+
+        _lastMotorTx = now;
+        _wasMoving = isMoving;
+
+        _ = SendControllerMoveAsync(mode, panSpeedDps, tiltSpeedDps);
+    }
+
+    // In-flight guard so controller movement frames coalesce instead of queuing.
+    private int _controllerTxBusy;
+
+    private async Task SendControllerMoveAsync(byte mode, double panDps, double tiltDps)
+    {
+        try
+        {
+            await _service.SendPanTiltAsync(
+                panMode: mode, tiltMode: mode,
+                panAngleDeg: 0, tiltAngleDeg: 0,
+                panSpeedDps: panDps, tiltSpeedDps: tiltDps);
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _controllerTxBusy, 0);
+        }
+    }
+
+    private async Task SendControllerStopAsync()
+    {
+        // Zero velocity in the current armed mode = halt. Sent unconditionally.
+        byte mode = ControllerDriveMode;
+        await _service.SendPanTiltAsync(
+            panMode: mode, tiltMode: mode,
+            panAngleDeg: 0, tiltAngleDeg: 0,
+            panSpeedDps: 0, tiltSpeedDps: 0);
     }
 
     public void HandleControllerButton(XboxButton btn)
@@ -1409,7 +1789,10 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
             switch (btn)
             {
                 case XboxButton.A:
-                    _ = _service.SendStabControlAsync(stabMode: 0x01);
+                    // Stab ON — Stabilised mode, Active (control byte 0x06).
+                    _ = _service.SendStabControlAsync(
+                        panMode: 0x03, panDisengage: false,
+                        tiltMode: 0x03, tiltDisengage: false);
                     break;
                 case XboxButton.B:
                     // Emergency stop — Stop mode (0x00) + speed 0
@@ -1428,8 +1811,8 @@ public sealed partial class DeviceControllerViewModel : ViewModelBase
                     LogLines.Add($"{DateTime.Now:HH:mm:ss.fff}  CTL  RB pressed — FOV up");
                     break;
                 case XboxButton.Start:
-                    // Home — position mode + angles 0, low speed
-                    _ = _service.SendPanTiltAsync(0x01, 0x01, 0, 0, 500, 500);
+                    // Home — position mode + angles 0, modest slew (10°/s)
+                    _ = _service.SendPanTiltAsync(0x01, 0x01, 0, 0, 10, 10);
                     break;
                 case XboxButton.Back:
                     ShowControllerVisual = !ShowControllerVisual;

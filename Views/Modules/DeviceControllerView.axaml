@@ -103,21 +103,18 @@
                 RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="4">
             <TextBlock Classes="label" Text="System State" Grid.Row="0"/>
             <TextBlock Classes="value" Text="{Binding SystemState}" Grid.Row="0" Grid.Column="1"/>
-            <TextBlock Classes="label" Text="Op. Hours" Grid.Row="1"/>
-            <TextBlock Classes="value" Text="{Binding OperationalHours, StringFormat={}{0} h}" Grid.Row="1" Grid.Column="1"/>
-            <TextBlock Classes="label" Text="Temperature" Grid.Row="2"/>
-            <TextBlock Classes="value" Text="{Binding TemperatureCelsius, StringFormat={}{0} °C}" Grid.Row="2" Grid.Column="1"/>
-            <TextBlock Classes="label" Text="Humidity" Grid.Row="3"/>
-            <TextBlock Classes="value" Text="{Binding HumidityPercent, StringFormat={}{0} %}" Grid.Row="3" Grid.Column="1"/>
+            <TextBlock Classes="label" Text="Pan Mode" Grid.Row="1"/>
+            <TextBlock Classes="value" Text="{Binding GenPanMode}" Grid.Row="1" Grid.Column="1"/>
+            <TextBlock Classes="label" Text="Tilt Mode" Grid.Row="2"/>
+            <TextBlock Classes="value" Text="{Binding GenTiltMode}" Grid.Row="2" Grid.Column="1"/>
+            <TextBlock Classes="label" Text="Bus Voltage" Grid.Row="3"/>
+            <TextBlock Classes="value" Text="{Binding BusVoltage}" Grid.Row="3" Grid.Column="1"/>
           </Grid>
 
           <!--
-            Health Flags: each binding gets BOTH an OK pill (green) and
-            an ERR pill (red), only one of which is visible at any time.
-            The entire row is gated on IsConnected so we don't show
-            "Power OK" / "Fibre OK" before any frame has been received
-            (otherwise the default !PowerFailure = !false = true would
-            light all the OK pills as soon as the view loads).
+            Health Flags: each binding gets BOTH an OK pill (green) and an ERR
+            pill (red), only one visible at a time. Gated on IsConnected so we
+            don't light all the OK pills before any frame has been received.
           -->
           <TextBlock Classes="label"
                      Text="Health Flags will appear after connect"
@@ -128,55 +125,46 @@
                      IsVisible="{Binding IsConnected}"/>
           <WrapPanel Orientation="Horizontal"
                      IsVisible="{Binding IsConnected}">
-            <Border Classes="status-ok"  IsVisible="{Binding !PowerFailure}"   Margin="0,0,6,4">
+            <Border Classes="status-ok"  IsVisible="{Binding SystemReady}"  Margin="0,0,6,4">
+              <TextBlock Text="Ready"     Foreground="#DCFCE7" FontSize="11"/>
+            </Border>
+            <Border Classes="status-err" IsVisible="{Binding !SystemReady}" Margin="0,0,6,4">
+              <TextBlock Text="Not Ready" Foreground="#FEE2E2" FontSize="11"/>
+            </Border>
+
+            <Border Classes="status-ok"  IsVisible="{Binding !PowerFailure}" Margin="0,0,6,4">
               <TextBlock Text="Power OK"   Foreground="#DCFCE7" FontSize="11"/>
             </Border>
-            <Border Classes="status-err" IsVisible="{Binding PowerFailure}"    Margin="0,0,6,4">
+            <Border Classes="status-err" IsVisible="{Binding PowerFailure}"  Margin="0,0,6,4">
               <TextBlock Text="Power FAIL" Foreground="#FEE2E2" FontSize="11"/>
             </Border>
 
-            <Border Classes="status-ok"  IsVisible="{Binding !FibreError}"     Margin="0,0,6,4">
-              <TextBlock Text="Fibre OK"  Foreground="#DCFCE7" FontSize="11"/>
+            <Border Classes="status-ok"  IsVisible="{Binding !ImuError}"  Margin="0,0,6,4">
+              <TextBlock Text="IMU OK"  Foreground="#DCFCE7" FontSize="11"/>
             </Border>
-            <Border Classes="status-err" IsVisible="{Binding FibreError}"      Margin="0,0,6,4">
-              <TextBlock Text="Fibre ERR" Foreground="#FEE2E2" FontSize="11"/>
-            </Border>
-
-            <Border Classes="status-ok"  IsVisible="{Binding !ImuError}"       Margin="0,0,6,4">
-              <TextBlock Text="IMU OK"    Foreground="#DCFCE7" FontSize="11"/>
-            </Border>
-            <Border Classes="status-err" IsVisible="{Binding ImuError}"        Margin="0,0,6,4">
-              <TextBlock Text="IMU ERR"   Foreground="#FEE2E2" FontSize="11"/>
+            <Border Classes="status-err" IsVisible="{Binding ImuError}"   Margin="0,0,6,4">
+              <TextBlock Text="IMU ERR" Foreground="#FEE2E2" FontSize="11"/>
             </Border>
 
-            <Border Classes="status-ok"  IsVisible="{Binding !LrfNotSafe}"     Margin="0,0,6,4">
-              <TextBlock Text="LRF Safe"   Foreground="#DCFCE7" FontSize="11"/>
+            <Border Classes="status-err" IsVisible="{Binding PanEncoderError}"  Margin="0,0,6,4">
+              <TextBlock Text="Pan Enc ERR"  Foreground="#FEE2E2" FontSize="11"/>
             </Border>
-            <Border Classes="status-err" IsVisible="{Binding LrfNotSafe}"      Margin="0,0,6,4">
-              <TextBlock Text="LRF Unsafe" Foreground="#FEE2E2" FontSize="11"/>
+            <Border Classes="status-err" IsVisible="{Binding TiltEncoderError}" Margin="0,0,6,4">
+              <TextBlock Text="Tilt Enc ERR" Foreground="#FEE2E2" FontSize="11"/>
             </Border>
-
-            <Border Classes="status-ok"  IsVisible="{Binding !LpiNotSafe}"     Margin="0,0,6,4">
-              <TextBlock Text="LPI Safe"   Foreground="#DCFCE7" FontSize="11"/>
+            <Border Classes="status-err" IsVisible="{Binding PanAdcError}"  Margin="0,0,6,4">
+              <TextBlock Text="Pan ADC ERR"  Foreground="#FEE2E2" FontSize="11"/>
             </Border>
-            <Border Classes="status-err" IsVisible="{Binding LpiNotSafe}"      Margin="0,0,6,4">
-              <TextBlock Text="LPI Unsafe" Foreground="#FEE2E2" FontSize="11"/>
+            <Border Classes="status-err" IsVisible="{Binding TiltAdcError}" Margin="0,0,6,4">
+              <TextBlock Text="Tilt ADC ERR" Foreground="#FEE2E2" FontSize="11"/>
             </Border>
-
-            <Border Classes="status-err" Margin="0,0,6,4"
-                    IsVisible="{Binding IsMwirEnabled}">
-              <!-- Inner visibility AND'ed with the MWIR-enabled flag.
-                   When MWIR comes online, drop the outer IsVisible and
-                   restore the original "IsVisible='{Binding MwirMotorFault}'". -->
-              <TextBlock Text="MWIR Motor" Foreground="#FEE2E2" FontSize="11"/>
+            <Border Classes="status-err" IsVisible="{Binding MotorBrakeOn}" Margin="0,0,6,4">
+              <TextBlock Text="Brake ON" Foreground="#FEE2E2" FontSize="11"/>
             </Border>
-            <Border Classes="status-err" IsVisible="{Binding NirMotorFault}"   Margin="0,0,6,4">
-              <TextBlock Text="NIR Motor"  Foreground="#FEE2E2" FontSize="11"/>
-            </Border>
-            <Border Classes="status-err" IsVisible="{Binding PanMotorFault}"   Margin="0,0,6,4">
+            <Border Classes="status-err" IsVisible="{Binding PanMotorFault}"  Margin="0,0,6,4">
               <TextBlock Text="Pan Fault"  Foreground="#FEE2E2" FontSize="11"/>
             </Border>
-            <Border Classes="status-err" IsVisible="{Binding TiltMotorFault}"  Margin="0,0,6,4">
+            <Border Classes="status-err" IsVisible="{Binding TiltMotorFault}" Margin="0,0,6,4">
               <TextBlock Text="Tilt Fault" Foreground="#FEE2E2" FontSize="11"/>
             </Border>
           </WrapPanel>
@@ -191,15 +179,20 @@
     <DataTemplate x:Key="PtMotorTemplate" x:DataType="vm:DeviceControllerViewModel">
       <Border Classes="sub-card">
         <StackPanel Spacing="6">
-          <TextBlock Classes="sub-section" Text="§3.3.5 Pan/Tilt Motor Control"/>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBlock Classes="sub-section" Text="§3.3.5 Pan/Tilt Motor Control"/>
+            <Button Grid.Column="1" Classes="cmd" Content="Poll Motor"
+                    Command="{Binding GetMotorStatusCommand}"
+                    IsEnabled="{Binding CanSend}"/>
+          </Grid>
           <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
             <StackPanel Grid.Column="0" Spacing="4">
               <TextBlock Classes="label" Text="Pan Mode"/>
               <ComboBox ItemsSource="{Binding PanTiltModeOpts}" SelectedIndex="{Binding PanMode}"/>
               <TextBlock Classes="label" Text="Pan Angle (deg)"/>
-              <NumericUpDown Value="{Binding PanAngleDeg}" Minimum="-180" Maximum="360" Increment="1"/>
+              <NumericUpDown Value="{Binding PanAngleDeg, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Minimum="-360" Maximum="360" Increment="1"/>
               <TextBlock Classes="label" Text="Pan Speed"/>
-              <NumericUpDown Value="{Binding PanSpeed}" Minimum="0" Maximum="120" Increment="10"/>
+              <NumericUpDown Value="{Binding PanSpeed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Minimum="-120" Maximum="120" Increment="10"/>
               <TextBlock Classes="label" Text="Pan Feedback (deg)"/>
               <TextBlock Classes="value" Text="{Binding PanFeedbackDeg, StringFormat={}{0:F2}}"/>
             </StackPanel>
@@ -207,9 +200,9 @@
               <TextBlock Classes="label" Text="Tilt Mode"/>
               <ComboBox ItemsSource="{Binding PanTiltModeOpts}" SelectedIndex="{Binding TiltMode}"/>
               <TextBlock Classes="label" Text="Tilt Angle (deg)"/>
-              <NumericUpDown Value="{Binding TiltAngleDeg}" Minimum="-40" Maximum="80" Increment="1"/>
+              <NumericUpDown Value="{Binding TiltAngleDeg, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Minimum="-360" Maximum="360" Increment="1"/>
               <TextBlock Classes="label" Text="Tilt Speed"/>
-              <NumericUpDown Value="{Binding TiltSpeed}" Minimum="0" Maximum="120" Increment="10"/>
+              <NumericUpDown Value="{Binding TiltSpeed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Minimum="-120" Maximum="120" Increment="10"/>
               <TextBlock Classes="label" Text="Tilt Feedback (deg)"/>
               <TextBlock Classes="value" Text="{Binding TiltFeedbackDeg, StringFormat={}{0:F2}}"/>
             </StackPanel>
@@ -219,6 +212,32 @@
                     Command="{Binding SendPanTiltCommand}"
                     IsEnabled="{Binding CanSend}"/>
           </WrapPanel>
+
+          <!-- §3.3.5 GET Motor Control (0x08) decoded telemetry -->
+          <Border Classes="sub-card">
+            <StackPanel Spacing="3">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="label" Text="Motor Telemetry"/>
+                <TextBlock Grid.Column="1" Classes="label" FontFamily="Consolas"
+                           Text="{Binding LastMotorStatusPolled, StringFormat={}Last poll: {0}}"/>
+              </Grid>
+              <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                    RowSpacing="2" ColumnSpacing="8">
+                <TextBlock Grid.Row="0" Classes="label" Text="Pan Angle"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding MotorPanAngle}"/>
+                <TextBlock Grid.Row="1" Classes="label" Text="Tilt Angle"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding MotorTiltAngle}"/>
+                <TextBlock Grid.Row="2" Classes="label" Text="Pan Speed"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding MotorPanSpeed}"/>
+                <TextBlock Grid.Row="3" Classes="label" Text="Tilt Speed"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding MotorTiltSpeed}"/>
+                <TextBlock Grid.Row="4" Classes="label" Text="Pan Mode"/>
+                <TextBlock Grid.Row="4" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding MotorPanMode}"/>
+                <TextBlock Grid.Row="5" Classes="label" Text="Tilt Mode"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding MotorTiltMode}"/>
+              </Grid>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Border>
     </DataTemplate>
@@ -230,7 +249,12 @@
     <DataTemplate x:Key="StabTemplate" x:DataType="vm:DeviceControllerViewModel">
       <Border Classes="sub-card">
         <StackPanel Spacing="6">
-          <TextBlock Classes="sub-section" Text="§3.3.6 Stabilisation Control"/>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBlock Classes="sub-section" Text="§3.3.6 Stabilisation Control"/>
+            <Button Grid.Column="1" Classes="cmd" Content="Poll Stab"
+                    Command="{Binding GetStabStatusCommand}"
+                    IsEnabled="{Binding CanSend}"/>
+          </Grid>
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
             <StackPanel Spacing="4">
               <TextBlock Classes="label" Text="Stab Mode"/>
@@ -242,6 +266,34 @@
                     IsEnabled="{Binding CanSend}"
                     VerticalAlignment="Bottom"/>
           </Grid>
+
+          <!-- §3.3 GET Stab Control (0x0A) decoded telemetry -->
+          <Border Classes="sub-card">
+            <StackPanel Spacing="3">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="label" Text="Stab Telemetry"/>
+                <TextBlock Grid.Column="1" Classes="label" FontFamily="Consolas"
+                           Text="{Binding LastStabStatusPolled, StringFormat={}Last poll: {0}}"/>
+              </Grid>
+              <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                    RowSpacing="2" ColumnSpacing="8">
+                <TextBlock Grid.Row="0" Classes="label" Text="Uptime"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding StabUptime}"/>
+                <TextBlock Grid.Row="1" Classes="label" Text="IMU"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding StabImu}"/>
+                <TextBlock Grid.Row="2" Classes="label" Text="Accel"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding StabAccel}"/>
+                <TextBlock Grid.Row="3" Classes="label" Text="Gyro"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding StabGyro}"/>
+                <TextBlock Grid.Row="4" Classes="label" Text="Temp"/>
+                <TextBlock Grid.Row="4" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding StabTemp}"/>
+                <TextBlock Grid.Row="5" Classes="label" Text="EKF"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding StabEkf}"/>
+                <TextBlock Grid.Row="6" Classes="label" Text="Nudge"/>
+                <TextBlock Grid.Row="6" Grid.Column="1" Classes="value" FontFamily="Consolas" Text="{Binding StabNudge}"/>
+              </Grid>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Border>
     </DataTemplate>
@@ -269,19 +321,28 @@
                         Command="{Binding SendLrfStopCmmCommand}"
                         IsEnabled="{Binding CanSend}"/>
               </WrapPanel>
-              <TextBlock Classes="label" Text="{Binding LrfRange1, StringFormat={}Range 1: {0} m}"/>
-              <TextBlock Classes="label" Text="{Binding LrfRange2, StringFormat={}Range 2: {0} m}"/>
-              <TextBlock Classes="label" Text="{Binding LrfRange3, StringFormat={}Range 3: {0} m}"/>
+              <TextBlock Classes="label" Text="{Binding LrfRange1, StringFormat={}Range 1: {0:F3} m}"/>
+              <TextBlock Classes="label" Text="{Binding LrfRange2, StringFormat={}Range 2: {0:F3} m}"/>
+              <TextBlock Classes="label" Text="{Binding LrfRange3, StringFormat={}Range 3: {0:F3} m}"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Spacing="4">
-              <CheckBox Content="Set Range (unchecked = Get)" IsChecked="{Binding LrfSetRange}" Foreground="#E2E8F0"/>
+              <Button Classes="cmd" Content="Get Range"
+                      Command="{Binding GetLrfRangeCommand}"
+                      IsEnabled="{Binding CanSend}" HorizontalAlignment="Left"/>
               <TextBlock Classes="label" Text="Min Range (m)"/>
-              <NumericUpDown Value="{Binding LrfMinRange}" Minimum="0" Maximum="50000"/>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                <NumericUpDown Grid.Column="0" Value="{Binding LrfMinRange}" Minimum="0" Maximum="50000"/>
+                <Button Grid.Column="1" Classes="cmd" Content="Set Min"
+                        Command="{Binding SetLrfMinRangeCommand}"
+                        IsEnabled="{Binding CanSend}"/>
+              </Grid>
               <TextBlock Classes="label" Text="Max Range (m)"/>
-              <NumericUpDown Value="{Binding LrfMaxRange}" Minimum="0" Maximum="50000"/>
-              <Button Classes="cmd" Content="Send LRF Range"
-                      Command="{Binding SendLrfRangeCommand}"
-                      IsEnabled="{Binding CanSend}"/>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                <NumericUpDown Grid.Column="0" Value="{Binding LrfMaxRange}" Minimum="0" Maximum="50000"/>
+                <Button Grid.Column="1" Classes="cmd" Content="Set Max"
+                        Command="{Binding SetLrfMaxRangeCommand}"
+                        IsEnabled="{Binding CanSend}"/>
+              </Grid>
             </StackPanel>
           </Grid>
 
@@ -358,7 +419,6 @@
             <StackPanel Grid.Column="0" Spacing="4">
               <CheckBox Content="Alignment Pointer ON" Foreground="#E2E8F0"
                         IsChecked="{Binding LrfPointerOn}"
-                        Command="{Binding ToggleLrfPointerCommand}"
                         IsEnabled="{Binding CanSend}"/>
               <Button Classes="cmd" Content="Check Optical Crosstalk"
                       HorizontalAlignment="Left"
@@ -480,6 +540,74 @@
         <StackPanel Spacing="10">
           <TextBlock Classes="section" Text="Pan/Tilt Stab Controller (PTSC) - SRS §3.3"/>
 
+          <!-- Controller drive-mode selector + active-mode indicator.
+               Kept OUTSIDE the collapsible controller visual so it is always
+               visible (even when the on-screen controller is hidden). The
+               controller only drives the turret in Rate or Stabilised mode;
+               OFF disables the sticks. -->
+          <Border Classes="sub-card">
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Classes="sub-section" Text="Controller Mode"
+                           VerticalAlignment="Center"/>
+                <!-- Armed (green) vs Off (muted red) indicator pill -->
+                <Border Grid.Column="1" HorizontalAlignment="Right" CornerRadius="10"
+                        Padding="10,2" VerticalAlignment="Center" Background="#14532D"
+                        IsVisible="{Binding IsControllerArmed}">
+                  <TextBlock Text="{Binding ControllerModeText}" FontSize="11"
+                             FontWeight="Bold" Foreground="#DCFCE7"/>
+                </Border>
+                <Border Grid.Column="1" HorizontalAlignment="Right" CornerRadius="10"
+                        Padding="10,2" VerticalAlignment="Center" Background="#3F1D1D"
+                        IsVisible="{Binding IsControllerModeOff}">
+                  <TextBlock Text="{Binding ControllerModeText}" FontSize="11"
+                             FontWeight="Bold" Foreground="#FECACA"/>
+                </Border>
+              </Grid>
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Classes="cmd" Content="Rate / Velocity"
+                        Command="{Binding SetControllerModeRateCommand}"
+                        IsEnabled="{Binding CanSend}"/>
+                <Button Classes="cmd" Content="Stabilised"
+                        Command="{Binding SetControllerModeStabCommand}"
+                        IsEnabled="{Binding CanSend}"/>
+                <Button Classes="cmd" Content="Off"
+                        Command="{Binding SetControllerModeOffCommand}"/>
+
+                <!-- Invert controller axes (operator preference). -->
+                <Button Classes="cmd" Content="Invert"
+                        Command="{Binding ToggleInvertControlsCommand}"/>
+
+                <!-- Maintenance-only fine motor control: slows the stick slew
+                     rate for precise testing. Hidden unless maintenance is
+                     unlocked. -->
+                <Border Width="1" Background="#334155" Margin="4,2"
+                        IsVisible="{Binding Path=IsMaintenanceUnlocked,
+                                    Source={x:Static app:AppState.Current}}"/>
+                <Button Classes="cmd" Content="Fine Control"
+                        Command="{Binding ToggleFineControlCommand}"
+                        IsVisible="{Binding Path=IsMaintenanceUnlocked,
+                                    Source={x:Static app:AppState.Current}}"/>
+              </StackPanel>
+
+              <!-- Inverted-controls indicator -->
+              <Border Background="#1E3A5F" CornerRadius="3" Padding="6,2"
+                      HorizontalAlignment="Left"
+                      IsVisible="{Binding InvertControls}">
+                <TextBlock Text="Controls inverted" FontSize="11"
+                           FontWeight="Bold" Foreground="#BFDBFE"/>
+              </Border>
+
+              <!-- Fine-control status (maintenance only) -->
+              <Border Background="#3B0764" CornerRadius="3" Padding="6,2"
+                      HorizontalAlignment="Left"
+                      IsVisible="{Binding FineControlEnabled}">
+                <TextBlock Text="{Binding FineControlText}" FontSize="11"
+                           FontWeight="Bold" Foreground="#E9D5FF"/>
+              </Border>
+            </StackPanel>
+          </Border>
+
           <!-- Controller sub-card (collapsible via Hide/Show) -->
           <Border Classes="sub-card" IsVisible="{Binding ShowControllerVisual}">
             <StackPanel Spacing="6">
@@ -488,6 +616,7 @@
                 <Button Grid.Column="1" Classes="cmd" Content="Hide"
                         Command="{Binding ToggleControllerVisualCommand}"/>
               </Grid>
+
               <views:XboxControllerVisual
                   State="{Binding ControllerState}"
                   InteractionEnabled="{Binding IsControllerInteractionEnabled}"/>
@@ -521,29 +650,18 @@
             </StackPanel>
           </Border>
 
-          <Button Classes="cmd" Content="Show Controller"
-                  HorizontalAlignment="Left"
-                  Command="{Binding ToggleControllerVisualCommand}"
-                  IsVisible="{Binding !ShowControllerVisual}"/>
-
-          <!--
-            2-col internal layout for SRS sub-sections (video hidden):
-              Left col: §3.3.1 General Status + §3.3.5 Motor + §3.3.6 Stab
-              Right col: §3.3.11-13 Laser Range Finder
-            Matches the PanTilt module's PTSC card layout style.
-          -->
-          <!--
-            §3.3.1 General Status at full width: the pills strip wraps
-            better when given full horizontal space, and this balances
-            the heights of the columns below since Motor (tall) on the
-            left now pairs cleanly with Stab+LRF stacked on the right.
-            Reading order is still numerical:
-              top: 3.3.1, then 3.3.5 (left), 3.3.6 (right top),
-              3.3.11-13 (right bottom).
-          -->
-          <ContentControl Content="{Binding}"
-                          ContentTemplate="{StaticResource GeneralStatusTemplate}"
-                          IsVisible="{Binding !$parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}"/>
+          <StackPanel Orientation="Horizontal" Spacing="8"
+                      IsVisible="{Binding !ShowControllerVisual}">
+            <Button Classes="cmd" Content="Show Controller"
+                    HorizontalAlignment="Left"
+                    Command="{Binding ToggleControllerVisualCommand}"/>
+            <Border Background="#14532D" BorderBrush="#166534" BorderThickness="1"
+                    CornerRadius="10" Padding="8,2" VerticalAlignment="Center"
+                    IsVisible="{Binding IsPhysicalControllerConnected}">
+              <TextBlock Text="● Controller connected" FontSize="11" FontWeight="SemiBold"
+                         Foreground="#DCFCE7" VerticalAlignment="Center"/>
+            </Border>
+          </StackPanel>
 
           <!--
             Row 1 (2-col): §3.3.5 Pan/Tilt Motor on the left, §3.3.6
@@ -558,6 +676,50 @@
                             ContentTemplate="{StaticResource StabTemplate}"/>
           </Grid>
 
+          <!-- §3.3.16 IBIT inside PTSC card, ABOVE the LRF (video hidden) -->
+          <Border Classes="sub-card" IsVisible="{Binding !$parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+              <TextBlock Classes="section" Text="IBIT – Initialization Built-In Test  §3.3.16"/>
+              <Button Grid.Column="1" Classes="cmd" Content="Full IBIT"
+                      Command="{Binding RunFullIbitCommand}"
+                      IsEnabled="{Binding CanSend}"/>
+              <Button Grid.Column="2" Classes="cmd" Content="Silent IBIT"
+                      Command="{Binding RunSilentIbitCommand}"
+                      IsEnabled="{Binding CanSend}"/>
+              <Button Grid.Column="3" Classes="cmd" Content="Read"
+                      Command="{Binding ReadIbitCommand}"
+                      IsEnabled="{Binding CanSend}"/>
+            </Grid>
+            <!-- IBIT progress + PASS/FAULT result -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <ProgressBar Grid.Column="0" Minimum="0" Maximum="100"
+                           Value="{Binding IbitProgress}" Height="14"/>
+              <TextBlock Grid.Column="1" Classes="value" FontFamily="Consolas"
+                         VerticalAlignment="Center"
+                         Text="{Binding IbitResultText}"/>
+            </Grid>
+            <Border Classes="sub-card">
+              <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="8">
+                <TextBlock Classes="label" Text="Status" Grid.Row="0"/>
+                <TextBlock Classes="value" Text="{Binding IbitGeneralStatus}" Grid.Row="0" Grid.Column="1" TextWrapping="Wrap"/>
+                <TextBlock Classes="label" Text="Pan Motor" Grid.Row="1"/>
+                <TextBlock Classes="value" Text="{Binding IbitPanMotor}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"/>
+                <TextBlock Classes="label" Text="Tilt Motor" Grid.Row="2"/>
+                <TextBlock Classes="value" Text="{Binding IbitTiltMotor}" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap"/>
+                <TextBlock Classes="label" Text="Sensor / Power" Grid.Row="3"/>
+                <TextBlock Classes="value" Text="{Binding IbitSensor}" Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"/>
+                <TextBlock Classes="label" Text="Pan Ext (CBIT)" Grid.Row="4"/>
+                <TextBlock Classes="value" Text="{Binding IbitPanExt}" Grid.Row="4" Grid.Column="1" TextWrapping="Wrap"/>
+                <TextBlock Classes="label" Text="Tilt Ext (CBIT)" Grid.Row="5"/>
+                <TextBlock Classes="value" Text="{Binding IbitTiltExt}" Grid.Row="5" Grid.Column="1" TextWrapping="Wrap"/>
+                <TextBlock Classes="label" Text="IMU" Grid.Row="6"/>
+                <TextBlock Classes="value" Text="{Binding IbitImu}" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap"/>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </Border>
+
           <!--
             Row 2 (full width): §3.3.11-13 LRF spans the entire PTSC
             card so it can use horizontal space to lay out its many
@@ -567,6 +729,7 @@
                           ContentTemplate="{StaticResource LrfTemplate}"
                           IsVisible="{Binding !$parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}"/>
 
+
           <!--
             1-col stack for video-shown mode. Sections in numerical
             order so the operator scrolls down through 3.3.1, 3.3.5,
@@ -575,11 +738,51 @@
           <StackPanel Spacing="8"
                       IsVisible="{Binding $parent[shared:ModuleWorkspaceShell].IsVideoFeedVisible}">
             <ContentControl Content="{Binding}"
-                            ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
-            <ContentControl Content="{Binding}"
                             ContentTemplate="{StaticResource PtMotorTemplate}"/>
             <ContentControl Content="{Binding}"
                             ContentTemplate="{StaticResource StabTemplate}"/>
+            <!-- §3.3.16 IBIT inside PTSC card, ABOVE the LRF (video shown) -->
+            <Border Classes="sub-card">
+              <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                  <TextBlock Classes="section" Text="IBIT – Initialization Built-In Test  §3.3.16"/>
+                  <Button Grid.Column="1" Classes="cmd" Content="Full IBIT"
+                          Command="{Binding RunFullIbitCommand}"
+                          IsEnabled="{Binding CanSend}"/>
+                  <Button Grid.Column="2" Classes="cmd" Content="Silent IBIT"
+                          Command="{Binding RunSilentIbitCommand}"
+                          IsEnabled="{Binding CanSend}"/>
+                  <Button Grid.Column="3" Classes="cmd" Content="Read"
+                          Command="{Binding ReadIbitCommand}"
+                          IsEnabled="{Binding CanSend}"/>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <ProgressBar Grid.Column="0" Minimum="0" Maximum="100"
+                               Value="{Binding IbitProgress}" Height="14"/>
+                  <TextBlock Grid.Column="1" Classes="value" FontFamily="Consolas"
+                             VerticalAlignment="Center"
+                             Text="{Binding IbitResultText}"/>
+                </Grid>
+                <Border Classes="sub-card">
+                  <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="Status" Grid.Row="0"/>
+                    <TextBlock Classes="value" Text="{Binding IbitGeneralStatus}" Grid.Row="0" Grid.Column="1" TextWrapping="Wrap"/>
+                    <TextBlock Classes="label" Text="Pan Motor" Grid.Row="1"/>
+                    <TextBlock Classes="value" Text="{Binding IbitPanMotor}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"/>
+                    <TextBlock Classes="label" Text="Tilt Motor" Grid.Row="2"/>
+                    <TextBlock Classes="value" Text="{Binding IbitTiltMotor}" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap"/>
+                    <TextBlock Classes="label" Text="Sensor / Power" Grid.Row="3"/>
+                    <TextBlock Classes="value" Text="{Binding IbitSensor}" Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"/>
+                    <TextBlock Classes="label" Text="Pan Ext (CBIT)" Grid.Row="4"/>
+                    <TextBlock Classes="value" Text="{Binding IbitPanExt}" Grid.Row="4" Grid.Column="1" TextWrapping="Wrap"/>
+                    <TextBlock Classes="label" Text="Tilt Ext (CBIT)" Grid.Row="5"/>
+                    <TextBlock Classes="value" Text="{Binding IbitTiltExt}" Grid.Row="5" Grid.Column="1" TextWrapping="Wrap"/>
+                    <TextBlock Classes="label" Text="IMU" Grid.Row="6"/>
+                    <TextBlock Classes="value" Text="{Binding IbitImu}" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap"/>
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </Border>
             <ContentControl Content="{Binding}"
                             ContentTemplate="{StaticResource LrfTemplate}"/>
           </StackPanel>
@@ -662,12 +865,25 @@
         </Border>
 
         <!--
+          §3.3.1 General Status: standalone card between Connection and the
+          PTSC card (full width, always visible). It is NOT part of the PTSC
+          card — it sits above it.
+        -->
+        <Border Classes="panel-card" VerticalAlignment="Top">
+          <ContentControl Content="{Binding}"
+                          ContentTemplate="{StaticResource GeneralStatusTemplate}"/>
+        </Border>
+
+        <!--
           Pan/Tilt Stab Controller (PTSC) combined card: full width,
           always visible, contains Controller + Motor + Stab + LRF.
           See PtscCombinedCardTemplate in UserControl.Resources.
         -->
         <ContentControl Content="{Binding}"
                         ContentTemplate="{StaticResource PtscCombinedCardTemplate}"/>
+
+
+
 
         <!-- Two-column layout (video hidden): remaining module cards -->
         <Grid ColumnDefinitions="*,*" ColumnSpacing="8"
@@ -772,104 +988,7 @@
                 </Grid>
               </StackPanel>
             </Border>
-<Border Classes="panel-card" VerticalAlignment="Top">
-            <StackPanel Spacing="8">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Classes="section" Text="IBIT – Initialization Built-In Test  §3.3.16"/>
-                <Button Grid.Column="1" Classes="cmd" Content="Run IBIT"
-                        Command="{Binding SendIbitCommand}"
-                        IsEnabled="{Binding CanSend}"/>
-              </Grid>
-              <Border Classes="sub-card">
-                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="8">
-                  <TextBlock Classes="label" Text="General" Grid.Row="0"/>
-                  <TextBlock Classes="value" Text="{Binding IbitGeneralStatus}" Grid.Row="0" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="MWIR ZG1" Grid.Row="1"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirZg1}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="MWIR ZG2" Grid.Row="2"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirZg2}" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="MWIR Solenoid" Grid.Row="3"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirSolenoid}" Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="MWIR TEC" Grid.Row="4"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirTec}" Grid.Row="4" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="NIR ZG1" Grid.Row="5"/>
-                  <TextBlock Classes="value" Text="{Binding IbitNirZg1}" Grid.Row="5" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="NIR ZG2" Grid.Row="6"/>
-                  <TextBlock Classes="value" Text="{Binding IbitNirZg2}" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="Pan Motor" Grid.Row="7"/>
-                  <TextBlock Classes="value" Text="{Binding IbitPanMotor}" Grid.Row="7" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="Tilt Motor" Grid.Row="8"/>
-                  <TextBlock Classes="value" Text="{Binding IbitTiltMotor}" Grid.Row="8" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="LRF" Grid.Row="9"/>
-                  <TextBlock Classes="value" Text="{Binding IbitLrfStatus}" Grid.Row="9" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="Environmental" Grid.Row="10"/>
-                  <TextBlock Classes="value" Text="{Binding IbitEnvironmental}" Grid.Row="10" Grid.Column="1" TextWrapping="Wrap"/>
-                </Grid>
-              </Border>
-            </StackPanel>
-          </Border>
 
-<!-- ════════════════════════════════════════════════════════════════
-       NUC Control — MAINTENANCE ONLY.
-       Two sensors (RGB cmd 0x19, NIR cmd 0x1A); payload [type, 00, 00].
-       The whole card is hidden when maintenance is locked, so operators
-       never see it.
-     ════════════════════════════════════════════════════════════════ -->
-<Border Classes="panel-card" VerticalAlignment="Top"
-        IsVisible="{Binding Path=IsMaintenanceUnlocked,
-                    Source={x:Static app:AppState.Current}}">
-  <StackPanel Spacing="8">
-    <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="section" Text="NUC Control  (Maintenance)"/>
-      <Border Grid.Column="1"
-              Background="#7F1D1D" CornerRadius="3" Padding="6,2"
-              VerticalAlignment="Center">
-        <TextBlock Text="MAINT" FontSize="10" FontWeight="Bold"
-                   Foreground="#FECACA"/>
-      </Border>
-    </Grid>
-
-    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-
-      <!-- RGB column -->
-      <StackPanel Grid.Column="0" Spacing="4">
-        <TextBlock Classes="label" Text="RGB Sensor" FontWeight="SemiBold"/>
-        <TextBlock Classes="label" Text="NUC Type"/>
-        <ComboBox ItemsSource="{Binding NucTypeOpts}"
-                  SelectedIndex="{Binding RgbNucType}"/>
-        <TextBlock Classes="label"
-                   Text="{Binding RgbNucFeedback, StringFormat=Status: {0}}"/>
-        <Button Classes="cmd" Content="Start RGB NUC"
-                Command="{Binding StartRgbNucCommand}"
-                IsEnabled="{Binding CanSend}"
-                Margin="0,8,0,0"/>
-      </StackPanel>
-
-      <!-- NIR column -->
-      <StackPanel Grid.Column="1" Spacing="4">
-        <TextBlock Classes="label" Text="NIR Sensor" FontWeight="SemiBold"/>
-        <TextBlock Classes="label" Text="NUC Type"/>
-        <ComboBox ItemsSource="{Binding NucTypeOpts}"
-                  SelectedIndex="{Binding NirNucType}"/>
-        <TextBlock Classes="label"
-                   Text="{Binding NirNucFeedback, StringFormat=Status: {0}}"/>
-        <Button Classes="cmd" Content="Start NIR NUC"
-                Command="{Binding StartNirNucCommand}"
-                IsEnabled="{Binding CanSend}"
-                Margin="0,8,0,0"/>
-      </StackPanel>
-
-    </Grid>
-  </StackPanel>
-</Border>
             </StackPanel>
             <StackPanel Grid.Column="1" Spacing="8">
 
@@ -911,7 +1030,7 @@
             <StackPanel Spacing="8">
               <TextBlock Classes="section" Text="Image Enhancement  §3.3.10"/>
               <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                <StackPanel Grid.Column="0" Spacing="4"
+                <StackPanel Grid.Column="1" Spacing="4"
                             IsVisible="{Binding IsMwirEnabled}">
                   <TextBlock Classes="label" Text="MWIR Edge Enhancement"/>
                   <ComboBox ItemsSource="{Binding EdgeModeOpts}" SelectedIndex="{Binding MwirEdgeMode}"/>
@@ -921,8 +1040,8 @@
                   <ComboBox ItemsSource="{Binding NucModeOpts}" SelectedIndex="{Binding MwirNucRequest}"/>
                   <TextBlock Classes="label" Text="MWIR Polarity"/>
                   <ComboBox ItemsSource="{Binding PolarityOpts}" SelectedIndex="{Binding MwirPolarityMode}"/>
-                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding MwirDeadPixelEnable}" Foreground="#E2E8F0"/>
-                  <CheckBox Content="Noise Suppression" IsChecked="{Binding MwirNoiseSuppEnable}" Foreground="#E2E8F0"/>
+                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding MwirDeadPixelEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
+                  <CheckBox Content="Noise Suppression" IsChecked="{Binding MwirNoiseSuppEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
                   <CheckBox Content="Upscaling" IsChecked="{Binding MwirUpscaleEnable}" Foreground="#E2E8F0"/>
                   <Button Classes="cmd" Content="Apply MWIR Enhancement"
                           Command="{Binding SendMwirEnhancementCommand}"
@@ -934,26 +1053,26 @@
                   MWIR is hidden (IsMwirEnabled = false). When MWIR
                   comes online we'll switch to a 3-col layout.
                 -->
-                <StackPanel Grid.Column="0" Spacing="4"
+                <StackPanel Grid.Column="1" Spacing="4"
                             IsVisible="{Binding !IsMwirEnabled}">
                   <TextBlock Classes="label" Text="RGB Edge Enhancement"/>
                   <ComboBox ItemsSource="{Binding EdgeModeOpts}" SelectedIndex="{Binding RgbEdgeMode}"/>
                   <TextBlock Classes="label" Text="RGB Contrast Enhancement"/>
                   <ComboBox ItemsSource="{Binding ContrastOpts}" SelectedIndex="{Binding RgbContrastMode}"/>
-                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding RgbDeadPixelEnable}" Foreground="#E2E8F0"/>
-                  <CheckBox Content="Noise Suppression" IsChecked="{Binding RgbNoiseSuppEnable}" Foreground="#E2E8F0"/>
+                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding RgbDeadPixelEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
+                  <CheckBox Content="Noise Suppression" IsChecked="{Binding RgbNoiseSuppEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
                   <Button Classes="cmd" Content="Apply RGB Enhancement"
                           Command="{Binding SendRgbEnhancementCommand}"
                           IsEnabled="{Binding CanSend}"
                           Margin="0,16,0,0"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="4">
+                <StackPanel Grid.Column="0" Spacing="4">
                   <TextBlock Classes="label" Text="NIR Edge Enhancement"/>
                   <ComboBox ItemsSource="{Binding EdgeModeOpts}" SelectedIndex="{Binding NirEdgeMode}"/>
                   <TextBlock Classes="label" Text="NIR Contrast Enhancement"/>
                   <ComboBox ItemsSource="{Binding ContrastOpts}" SelectedIndex="{Binding NirContrastMode}"/>
-                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding NirDeadPixelEnable}" Foreground="#E2E8F0"/>
-                  <CheckBox Content="Noise Suppression" IsChecked="{Binding NirNoiseSuppEnable}" Foreground="#E2E8F0"/>
+                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding NirDeadPixelEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
+                  <CheckBox Content="Noise Suppression" IsChecked="{Binding NirNoiseSuppEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
                   <Button Classes="cmd" Content="Apply NIR Enhancement"
                           Command="{Binding SendNirEnhancementCommand}"
                           IsEnabled="{Binding CanSend}"
@@ -965,7 +1084,7 @@
 
 <!-- ════════════════════════════════════════════════════════════════
        Exposure (NIR + VIS).  Cmd 0x17 (NIR) / 0x18 (VIS).
-       Auto/Manual checkbox; when Manual, the µs value is sent as a
+       Auto/Manual checkbox; when Manual, the ms value is sent as a
        4-byte IEEE-754 float (little-endian).  Analogue gain default 4.
      ════════════════════════════════════════════════════════════════ -->
 <Border Classes="panel-card" VerticalAlignment="Top">
@@ -977,9 +1096,9 @@
       <StackPanel Grid.Column="0" Spacing="4">
         <TextBlock Classes="label" Text="NIR Sensor" FontWeight="SemiBold"/>
         <CheckBox  Content="Manual exposure" IsChecked="{Binding NirExposureManual}" Foreground="#E2E8F0"/>
-        <TextBlock Classes="label" Text="Exposure (µs)"/>
+        <TextBlock Classes="label" Text="Exposure (ms)"/>
         <NumericUpDown Value="{Binding NirExposureValue}"
-                       Minimum="0" Maximum="100000" Increment="1"
+                       Minimum="0" Maximum="10000" Increment="0.1"
                        FormatString="0.0"
                        IsEnabled="{Binding NirExposureManual}"/>
         <TextBlock Classes="label" Text="Analogue Gain"/>
@@ -994,9 +1113,9 @@
       <StackPanel Grid.Column="1" Spacing="4">
         <TextBlock Classes="label" Text="VIS Sensor" FontWeight="SemiBold"/>
         <CheckBox  Content="Manual exposure" IsChecked="{Binding VisExposureManual}" Foreground="#E2E8F0"/>
-        <TextBlock Classes="label" Text="Exposure (µs)"/>
+        <TextBlock Classes="label" Text="Exposure (ms)"/>
         <NumericUpDown Value="{Binding VisExposureValue}"
-                       Minimum="0" Maximum="100000" Increment="1"
+                       Minimum="0" Maximum="10000" Increment="0.1"
                        FormatString="0.0"
                        IsEnabled="{Binding VisExposureManual}"/>
         <TextBlock Classes="label" Text="Analogue Gain"/>
@@ -1117,7 +1236,7 @@
             <StackPanel Spacing="8">
               <TextBlock Classes="section" Text="Image Enhancement  §3.3.10"/>
               <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                <StackPanel Grid.Column="0" Spacing="4"
+                <StackPanel Grid.Column="1" Spacing="4"
                             IsVisible="{Binding IsMwirEnabled}">
                   <TextBlock Classes="label" Text="MWIR Edge Enhancement"/>
                   <ComboBox ItemsSource="{Binding EdgeModeOpts}" SelectedIndex="{Binding MwirEdgeMode}"/>
@@ -1127,8 +1246,8 @@
                   <ComboBox ItemsSource="{Binding NucModeOpts}" SelectedIndex="{Binding MwirNucRequest}"/>
                   <TextBlock Classes="label" Text="MWIR Polarity"/>
                   <ComboBox ItemsSource="{Binding PolarityOpts}" SelectedIndex="{Binding MwirPolarityMode}"/>
-                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding MwirDeadPixelEnable}" Foreground="#E2E8F0"/>
-                  <CheckBox Content="Noise Suppression" IsChecked="{Binding MwirNoiseSuppEnable}" Foreground="#E2E8F0"/>
+                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding MwirDeadPixelEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
+                  <CheckBox Content="Noise Suppression" IsChecked="{Binding MwirNoiseSuppEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
                   <CheckBox Content="Upscaling" IsChecked="{Binding MwirUpscaleEnable}" Foreground="#E2E8F0"/>
                   <Button Classes="cmd" Content="Apply MWIR Enhancement"
                           Command="{Binding SendMwirEnhancementCommand}"
@@ -1140,26 +1259,26 @@
                   MWIR is hidden (IsMwirEnabled = false). When MWIR
                   comes online we'll switch to a 3-col layout.
                 -->
-                <StackPanel Grid.Column="0" Spacing="4"
+                <StackPanel Grid.Column="1" Spacing="4"
                             IsVisible="{Binding !IsMwirEnabled}">
                   <TextBlock Classes="label" Text="RGB Edge Enhancement"/>
                   <ComboBox ItemsSource="{Binding EdgeModeOpts}" SelectedIndex="{Binding RgbEdgeMode}"/>
                   <TextBlock Classes="label" Text="RGB Contrast Enhancement"/>
                   <ComboBox ItemsSource="{Binding ContrastOpts}" SelectedIndex="{Binding RgbContrastMode}"/>
-                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding RgbDeadPixelEnable}" Foreground="#E2E8F0"/>
-                  <CheckBox Content="Noise Suppression" IsChecked="{Binding RgbNoiseSuppEnable}" Foreground="#E2E8F0"/>
+                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding RgbDeadPixelEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
+                  <CheckBox Content="Noise Suppression" IsChecked="{Binding RgbNoiseSuppEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
                   <Button Classes="cmd" Content="Apply RGB Enhancement"
                           Command="{Binding SendRgbEnhancementCommand}"
                           IsEnabled="{Binding CanSend}"
                           Margin="0,16,0,0"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="4">
+                <StackPanel Grid.Column="0" Spacing="4">
                   <TextBlock Classes="label" Text="NIR Edge Enhancement"/>
                   <ComboBox ItemsSource="{Binding EdgeModeOpts}" SelectedIndex="{Binding NirEdgeMode}"/>
                   <TextBlock Classes="label" Text="NIR Contrast Enhancement"/>
                   <ComboBox ItemsSource="{Binding ContrastOpts}" SelectedIndex="{Binding NirContrastMode}"/>
-                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding NirDeadPixelEnable}" Foreground="#E2E8F0"/>
-                  <CheckBox Content="Noise Suppression" IsChecked="{Binding NirNoiseSuppEnable}" Foreground="#E2E8F0"/>
+                  <CheckBox Content="Dead Pixel Replacement" IsChecked="{Binding NirDeadPixelEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
+                  <CheckBox Content="Noise Suppression" IsChecked="{Binding NirNoiseSuppEnable}" Foreground="#E2E8F0" IsVisible="{Binding Path=IsMaintenanceUnlocked, Source={x:Static app:AppState.Current}}"/>
                   <Button Classes="cmd" Content="Apply NIR Enhancement"
                           Command="{Binding SendNirEnhancementCommand}"
                           IsEnabled="{Binding CanSend}"
@@ -1251,104 +1370,7 @@
                         IsEnabled="{Binding CanSend}"/>
               </StackPanel>
             </Border>
-<Border Classes="panel-card" VerticalAlignment="Top">
-            <StackPanel Spacing="8">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Classes="section" Text="IBIT – Initialization Built-In Test  §3.3.16"/>
-                <Button Grid.Column="1" Classes="cmd" Content="Run IBIT"
-                        Command="{Binding SendIbitCommand}"
-                        IsEnabled="{Binding CanSend}"/>
-              </Grid>
-              <Border Classes="sub-card">
-                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="8">
-                  <TextBlock Classes="label" Text="General" Grid.Row="0"/>
-                  <TextBlock Classes="value" Text="{Binding IbitGeneralStatus}" Grid.Row="0" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="MWIR ZG1" Grid.Row="1"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirZg1}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="MWIR ZG2" Grid.Row="2"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirZg2}" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="MWIR Solenoid" Grid.Row="3"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirSolenoid}" Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="MWIR TEC" Grid.Row="4"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="value" Text="{Binding IbitMwirTec}" Grid.Row="4" Grid.Column="1" TextWrapping="Wrap"
-                             IsVisible="{Binding IsMwirEnabled}"/>
-                  <TextBlock Classes="label" Text="NIR ZG1" Grid.Row="5"/>
-                  <TextBlock Classes="value" Text="{Binding IbitNirZg1}" Grid.Row="5" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="NIR ZG2" Grid.Row="6"/>
-                  <TextBlock Classes="value" Text="{Binding IbitNirZg2}" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="Pan Motor" Grid.Row="7"/>
-                  <TextBlock Classes="value" Text="{Binding IbitPanMotor}" Grid.Row="7" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="Tilt Motor" Grid.Row="8"/>
-                  <TextBlock Classes="value" Text="{Binding IbitTiltMotor}" Grid.Row="8" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="LRF" Grid.Row="9"/>
-                  <TextBlock Classes="value" Text="{Binding IbitLrfStatus}" Grid.Row="9" Grid.Column="1" TextWrapping="Wrap"/>
-                  <TextBlock Classes="label" Text="Environmental" Grid.Row="10"/>
-                  <TextBlock Classes="value" Text="{Binding IbitEnvironmental}" Grid.Row="10" Grid.Column="1" TextWrapping="Wrap"/>
-                </Grid>
-              </Border>
-            </StackPanel>
-          </Border>
 
-<!-- ════════════════════════════════════════════════════════════════
-       NUC Control — MAINTENANCE ONLY.
-       Two sensors (RGB cmd 0x19, NIR cmd 0x1A); payload [type, 00, 00].
-       The whole card is hidden when maintenance is locked, so operators
-       never see it.
-     ════════════════════════════════════════════════════════════════ -->
-<Border Classes="panel-card" VerticalAlignment="Top"
-        IsVisible="{Binding Path=IsMaintenanceUnlocked,
-                    Source={x:Static app:AppState.Current}}">
-  <StackPanel Spacing="8">
-    <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="section" Text="NUC Control  (Maintenance)"/>
-      <Border Grid.Column="1"
-              Background="#7F1D1D" CornerRadius="3" Padding="6,2"
-              VerticalAlignment="Center">
-        <TextBlock Text="MAINT" FontSize="10" FontWeight="Bold"
-                   Foreground="#FECACA"/>
-      </Border>
-    </Grid>
-
-    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-
-      <!-- RGB column -->
-      <StackPanel Grid.Column="0" Spacing="4">
-        <TextBlock Classes="label" Text="RGB Sensor" FontWeight="SemiBold"/>
-        <TextBlock Classes="label" Text="NUC Type"/>
-        <ComboBox ItemsSource="{Binding NucTypeOpts}"
-                  SelectedIndex="{Binding RgbNucType}"/>
-        <TextBlock Classes="label"
-                   Text="{Binding RgbNucFeedback, StringFormat=Status: {0}}"/>
-        <Button Classes="cmd" Content="Start RGB NUC"
-                Command="{Binding StartRgbNucCommand}"
-                IsEnabled="{Binding CanSend}"
-                Margin="0,8,0,0"/>
-      </StackPanel>
-
-      <!-- NIR column -->
-      <StackPanel Grid.Column="1" Spacing="4">
-        <TextBlock Classes="label" Text="NIR Sensor" FontWeight="SemiBold"/>
-        <TextBlock Classes="label" Text="NUC Type"/>
-        <ComboBox ItemsSource="{Binding NucTypeOpts}"
-                  SelectedIndex="{Binding NirNucType}"/>
-        <TextBlock Classes="label"
-                   Text="{Binding NirNucFeedback, StringFormat=Status: {0}}"/>
-        <Button Classes="cmd" Content="Start NIR NUC"
-                Command="{Binding StartNirNucCommand}"
-                IsEnabled="{Binding CanSend}"
-                Margin="0,8,0,0"/>
-      </StackPanel>
-
-    </Grid>
-  </StackPanel>
-</Border>
           </StackPanel>
         </StackPanel>
     </shared:ModuleWorkspaceShell.LeftContent>
@@ -1412,15 +1434,18 @@
               <ItemsControl ItemsSource="{Binding TraceLines}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <TextBlock Text="{Binding .}" FontFamily="Consolas" FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap"/>
+                    <SelectableTextBlock Text="{Binding .}" FontFamily="Consolas" FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap"/>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
           </Border>
-          <!-- Action row: Save (export) + Clear -->
+          <!-- Action row: Copy + Save (export) + Clear -->
           <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6"
                       HorizontalAlignment="Right">
+            <Button Classes="cmd" Content="Copy"
+                    Click="OnCopyTraceClicked"
+                    ToolTip.Tip="Copy the entire raw packet trace to the clipboard"/>
             <Button Classes="cmd" Content="Save..."
                     Click="OnSaveTraceClicked"
                     ToolTip.Tip="Export the entire raw packet trace to a .log / .txt file"/>
@@ -1437,6 +1462,17 @@
       RawFrame fires. Useful for protocol verification during bring-up.
     -->
     <shared:ModuleWorkspaceShell.RightExtraContent>
+      <!--
+        Single ScrollViewer for the entire right-extra area (Decoded Frame +
+        maintenance Pan/Tilt Debugger). Its height tracks the shell so it
+        shrinks with the window instead of overflowing; both cards scroll
+        together under one scrollbar.
+      -->
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    MaxHeight="{Binding $parent[shared:ModuleWorkspaceShell].Bounds.Height,
+                                Converter={x:Static conv:ObjectConverters.RightExtraMaxHeight}}">
+      <StackPanel Spacing="8">
       <Border Background="#0B1730" BorderBrush="#27476F" BorderThickness="1"
               CornerRadius="8" Padding="8">
         <!--
@@ -1455,42 +1491,41 @@
 
           <Border Grid.Row="1"
                   Background="#020617" BorderBrush="#334155"
-                  BorderThickness="1" CornerRadius="4" Padding="6"
-                  MaxHeight="260">
+                  BorderThickness="1" CornerRadius="4" Padding="6">
             <!--
-              VerticalScrollBarVisibility=Visible (not Auto) so the scrollbar
-              track is always shown — makes it obvious there's overflow when
-              the list grows past ~12 rows.
+              No nested scroll here — the whole right-extra area (Decoded Frame
+              + Pan/Tilt Debugger) shares ONE outer ScrollViewer so they scroll
+              together as a single region.
             -->
-            <ScrollViewer VerticalScrollBarVisibility="Visible"
-                          HorizontalScrollBarVisibility="Disabled">
-              <ItemsControl ItemsSource="{Binding LastDecodedFrameRows}">
+            <ItemsControl ItemsSource="{Binding LastDecodedFrameRows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <!-- Each row: position | label | hex | meaning -->
                     <Grid ColumnDefinitions="50,110,70,*" ColumnSpacing="6">
-                      <TextBlock Grid.Column="0" Text="{Binding Position}"
+                      <SelectableTextBlock Grid.Column="0" Text="{Binding Position}"
                                  FontFamily="Consolas" FontSize="11"
                                  Foreground="#64748B"/>
-                      <TextBlock Grid.Column="1" Text="{Binding Label}"
+                      <SelectableTextBlock Grid.Column="1" Text="{Binding Label}"
                                  FontFamily="Consolas" FontSize="11"
                                  FontWeight="SemiBold" Foreground="#93C5FD"/>
-                      <TextBlock Grid.Column="2" Text="{Binding HexValue}"
+                      <SelectableTextBlock Grid.Column="2" Text="{Binding HexValue}"
                                  FontFamily="Consolas" FontSize="11"
                                  Foreground="#FBBF24"/>
-                      <TextBlock Grid.Column="3" Text="{Binding Meaning}"
+                      <SelectableTextBlock Grid.Column="3" Text="{Binding Meaning}"
                                  FontFamily="Consolas" FontSize="11"
                                  Foreground="#94A3B8" TextWrapping="Wrap"/>
                     </Grid>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-            </ScrollViewer>
           </Border>
 
           <!-- Action row: Save (export) + Clear -->
           <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6"
                       HorizontalAlignment="Right">
+            <Button Classes="cmd" Content="Copy"
+                    Click="OnCopyDecodedClicked"
+                    ToolTip.Tip="Copy the decoded frame breakdown to the clipboard"/>
             <Button Classes="cmd" Content="Save..."
                     Click="OnSaveDecodedClicked"
                     ToolTip.Tip="Export the decoded frame breakdown to a .txt file"/>
@@ -1499,6 +1534,51 @@
           </StackPanel>
         </Grid>
       </Border>
+
+      <!--
+        Pan/Tilt debugger: shows the exact control bytes + scaled tick values
+        from the last Pan/Tilt command. Visible only when maintenance is
+        unlocked (AppState.Current.IsMaintenanceUnlocked).
+      -->
+      <Border Classes="panel-card" Margin="0,8,0,0"
+              IsVisible="{Binding Path=IsMaintenanceUnlocked,
+                          Source={x:Static app:AppState.Current}}">
+        <StackPanel Spacing="6">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Pan/Tilt Debugger" FontSize="13" FontWeight="Bold"
+                       Foreground="#E2E8F0"/>
+            <Border Grid.Column="1" Background="#7F1D1D" CornerRadius="3"
+                    Padding="6,2" VerticalAlignment="Center">
+              <TextBlock Text="MAINT" FontSize="10" FontWeight="Bold" Foreground="#FECACA"/>
+            </Border>
+          </Grid>
+          <TextBlock Text="Last Pan/Tilt command — encoded values"
+                     Foreground="#93C5FD" FontSize="11"/>
+          <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                RowSpacing="3" ColumnSpacing="8">
+            <TextBlock Grid.Row="0" Classes="label" Text="Pan Ctrl byte"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Classes="value" FontFamily="Consolas"
+                       Text="{Binding PtDbgPanCtrl}" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="1" Classes="label" Text="Tilt Ctrl byte"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" FontFamily="Consolas"
+                       Text="{Binding PtDbgTiltCtrl}" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="2" Classes="label" Text="Pan Angle"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" FontFamily="Consolas"
+                       Text="{Binding PtDbgPanAngle}" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="3" Classes="label" Text="Tilt Angle"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" Classes="value" FontFamily="Consolas"
+                       Text="{Binding PtDbgTiltAngle}" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="4" Classes="label" Text="Pan Speed"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" Classes="value" FontFamily="Consolas"
+                       Text="{Binding PtDbgPanSpeed}" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="5" Classes="label" Text="Tilt Speed"/>
+            <TextBlock Grid.Row="5" Grid.Column="1" Classes="value" FontFamily="Consolas"
+                       Text="{Binding PtDbgTiltSpeed}" TextWrapping="Wrap"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+      </StackPanel>
+      </ScrollViewer>
     </shared:ModuleWorkspaceShell.RightExtraContent>
 
   </shared:ModuleWorkspaceShell>

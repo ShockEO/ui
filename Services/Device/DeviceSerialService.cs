@@ -49,6 +49,10 @@ public sealed class DeviceSerialService : IDisposable
     private ITransport? _transport;
     private byte _seqId;
     private readonly List<byte> _rxBuf = [];
+
+    // DeviceFramer maintains its own reassembly state across calls; this is
+    // that buffer. Kept separate from _rxBuf (the raw accumulation buffer).
+    private readonly List<byte> _sirsBuf = [];
     private readonly SemaphoreSlim _txLock = new(1, 1);
 
     private bool _simulationMode;
@@ -142,7 +146,7 @@ public sealed class DeviceSerialService : IDisposable
                 return false;
             }
 
-            _rxBuf.Clear();
+            _rxBuf.Clear(); _sirsBuf.Clear();
             _seqId = 0;
             StatusChanged?.Invoke($"Connected – {_transport.Description}");
             Log("SYS", $"Opened {_transport.Description}");
@@ -220,7 +224,7 @@ public sealed class DeviceSerialService : IDisposable
             _transport.Dispose();
             _transport = null;
         }
-        _rxBuf.Clear();
+        _rxBuf.Clear(); _sirsBuf.Clear();
         StatusChanged?.Invoke("Disconnected");
         Log("SYS", "Disconnected.");
     }
@@ -229,9 +233,17 @@ public sealed class DeviceSerialService : IDisposable
     // Send helpers – one per SRS §3.3 command
     // -----------------------------------------------------------------------
 
-    /// <summary>§3.3.1  General Status Command</summary>
+    /// <summary>§3.3.1  General Status (GET — payload 00 00) to PTSC dst 0x20.</summary>
     public Task SendGeneralStatusAsync()
-        => SendAsync(DeviceCommandId.GeneralStatus, [0x55]);
+        => SendAsync(DeviceCommandId.Ptsc.GeneralStatusGet, [0x00, 0x00], DeviceFramer.PtscDstId);
+
+    /// <summary>§3.3 Motor Status (GET — payload 00 00) to PTSC dst 0x20.</summary>
+    public Task SendMotorStatusAsync()
+        => SendAsync(DeviceCommandId.Ptsc.MotorStatusGet, [0x00, 0x00], DeviceFramer.PtscDstId);
+
+    /// <summary>§3.3 Stab Status (GET — payload 00 00) to PTSC dst 0x20.</summary>
+    public Task SendStabStatusAsync()
+        => SendAsync(DeviceCommandId.Ptsc.StabStatusGet, [0x00, 0x00], DeviceFramer.PtscDstId);
 
     /// <summary>§3.3.2  Boresight Command</summary>
     public Task SendBoresightAsync(bool nirRight, bool nirDown, bool save,
@@ -283,30 +295,118 @@ public sealed class DeviceSerialService : IDisposable
     /// follows the SIRS §3.3.5 spec until/unless PTSC firmware switches
     /// to its native EOS motor-control payload.
     /// </summary>
+    /// <summary>
+    /// Encoder ticks per degree for the PTSC's 21-bit scale: 360° = 2^21 ticks.
+    /// Verified against the C2000 reference frames (+20°/s → 116508 ticks).
+    /// Applies to both position (deg) and rate (deg/s) fields.
+    /// </summary>
+    private const double TicksPerDegree = 2097152.0 / 360.0;   // 2^21 / 360 ≈ 5825.4222
+
+    // Sim-only mirror of the last commanded EKF targets (ticks), so the
+    // simulated Stab Status response can echo plausible values.
+    private int _simEkfPitch;
+    private int _simEkfYaw;
+
+    private static int DegToTicks(double degrees)
+        => (int)Math.Round(degrees * TicksPerDegree);
+
+    /// <summary>
+    /// §3.3.5  Pan/Tilt Motor Control — sent DIRECTLY to PTSC (dst=0x20).
+    /// Verified 16-byte payload:
+    ///   [0]  panCtrl  = (panMode &lt;&lt; 1) | panDisengage
+    ///   [1]  tiltCtrl = (tiltMode &lt;&lt; 1) | tiltDisengage
+    ///   [2..5]   pan position  — int32 LE, ticks (deg × 2^21/360)
+    ///   [6..9]   tilt position — int32 LE, ticks
+    ///   [10..13] pan speed     — int32 LE, ticks/s (deg/s × 2^21/360)
+    ///   [14..17] tilt speed    — int32 LE, ticks/s
+    ///   [18..19] reserve (0x00 0x00)
+    /// (Total 20-byte payload, matching the verified C2000 MotorSet frame.)
+    /// Modes: 0=Safety/Damping, 1=Rate/Velocity, 2=Position, 3=Stabilised.
+    /// Angles in degrees, speeds in degrees/second.
+    /// </summary>
     public Task SendPanTiltAsync(byte panMode, byte tiltMode,
-                                 int panAngleMilli, int tiltAngleMilli,
-                                 ushort panSpeed, ushort tiltSpeed)
-        => SendAsync(DeviceCommandId.PanTiltMotorControl,
-        [
-            (byte)(panMode  & 0x03),
-            (byte)(tiltMode & 0x03),
-            (byte)(panAngleMilli & 0xFF),  (byte)((panAngleMilli  >> 8)  & 0xFF),
-            (byte)((panAngleMilli  >> 16) & 0xFF), (byte)((panAngleMilli  >> 24) & 0xFF),
-            (byte)(tiltAngleMilli & 0xFF), (byte)((tiltAngleMilli >> 8)  & 0xFF),
-            (byte)((tiltAngleMilli >> 16) & 0xFF), (byte)((tiltAngleMilli >> 24) & 0xFF),
-            (byte)(panSpeed  & 0xFF), (byte)(panSpeed  >> 8),
-            (byte)(tiltSpeed & 0xFF), (byte)(tiltSpeed >> 8),
-            0x00, 0x00   // reserve
-        ], DeviceFramer.PtscDstId);
+                                 double panAngleDeg, double tiltAngleDeg,
+                                 double panSpeedDps, double tiltSpeedDps,
+                                 bool panDisengage = false, bool tiltDisengage = false)
+    {
+        byte panCtrl = (byte)((panMode & 0x03) << 1 | (panDisengage ? 0x01 : 0x00));
+        byte tiltCtrl = (byte)((tiltMode & 0x03) << 1 | (tiltDisengage ? 0x01 : 0x00));
+
+        int panPos = DegToTicks(panAngleDeg);
+        int tiltPos = DegToTicks(tiltAngleDeg);
+        int panSpd = DegToTicks(panSpeedDps);
+        int tiltSpd = DegToTicks(tiltSpeedDps);
+
+        // Mirror the commanded state so a simulated Motor Status (0x08) poll
+        // reflects what was last sent (position mode → echo target; rate mode →
+        // echo velocity). On real hardware the device reports actual values.
+        _simPanCtrl = panCtrl;
+        _simTiltCtrl = tiltCtrl;
+        _simPanPosTicks = panPos;
+        _simTiltPosTicks = tiltPos;
+        _simPanSpdTicks = panSpd;
+        _simTiltSpdTicks = tiltSpd;
+
+        var p = new byte[20];
+        p[0] = panCtrl;
+        p[1] = tiltCtrl;
+        WriteI32(p, 2, panPos);
+        WriteI32(p, 6, tiltPos);
+        WriteI32(p, 10, panSpd);
+        WriteI32(p, 14, tiltSpd);
+        // p[18..19] = reserve (already 0)
+        return SendAsync(DeviceCommandId.Ptsc.MotorSet, p, DeviceFramer.PtscDstId);
+    }
 
     /// <summary>
     /// §3.3.6  Stab Control — also sent DIRECTLY to PTSC. Same
     /// rationale as <see cref="SendPanTiltAsync"/> above.
     /// </summary>
+    /// <summary>
+    /// §3.3.6  Stab Control — sent DIRECTLY to PTSC (dst=0x20).
+    /// Verified 20-byte payload:
+    ///   [0]      panCtrl  = (panMode &lt;&lt; 1) | panDisengage
+    ///   [1]      tiltCtrl = (tiltMode &lt;&lt; 1) | tiltDisengage
+    ///   [2..5]   EKF Pitch target — float32 LE, DEGREES
+    ///   [6..9]   EKF Yaw   target — float32 LE, DEGREES
+    ///   [10..13] Pan nudge rate   — int32 LE, ticks/s (deg/s × 2^21/360)
+    ///   [14..17] Tilt nudge rate  — int32 LE, ticks/s
+    ///   [18..19] reserve
+    /// The simple single-mode overload is kept for existing callers that only
+    /// toggle the stab mode (e.g. controller A-button); it sets both axes to
+    /// the same mode with zero targets.
+    /// </summary>
+    public Task SendStabControlAsync(
+        byte panMode, bool panDisengage,
+        byte tiltMode, bool tiltDisengage,
+        float ekfPitchDeg = 0f, float ekfYawDeg = 0f,
+        double panNudgeDps = 0, double tiltNudgeDps = 0)
+    {
+        byte panCtrl = (byte)((panMode & 0x03) << 1 | (panDisengage ? 0x01 : 0x00));
+        byte tiltCtrl = (byte)((tiltMode & 0x03) << 1 | (tiltDisengage ? 0x01 : 0x00));
+
+        var p = new byte[20];
+        p[0] = panCtrl;
+        p[1] = tiltCtrl;
+        WriteF32(p, 2, ekfPitchDeg);
+        WriteF32(p, 6, ekfYawDeg);
+        WriteI32(p, 10, DegToTicks(panNudgeDps));
+        WriteI32(p, 14, DegToTicks(tiltNudgeDps));
+        // p[18..19] = reserve
+
+        // Mirror EKF targets so the simulated Stab Status (0x0A) can echo them.
+        _simEkfPitch = DegToTicks(ekfPitchDeg);
+        _simEkfYaw = DegToTicks(ekfYawDeg);
+
+        return SendAsync(DeviceCommandId.Ptsc.StabSet, p, DeviceFramer.PtscDstId);
+    }
+
+    /// <summary>
+    /// Convenience overload: set both axes to <paramref name="stabMode"/>
+    /// with no EKF target or nudge. Used by simple mode-toggle callers.
+    /// </summary>
     public Task SendStabControlAsync(byte stabMode)
-        => SendAsync(DeviceCommandId.StabControl,
-        [(byte)(stabMode & 0x03), 0x00, 0x00],
-        DeviceFramer.PtscDstId);
+        => SendStabControlAsync(stabMode, false, stabMode, false);
 
     /// <summary>§3.3.7  Video Source Selection Command</summary>
     public Task SendVideoSourceAsync(bool sdi1Nir, bool sdi2Nir)
@@ -378,28 +478,28 @@ public sealed class DeviceSerialService : IDisposable
 
     /// <summary>
     /// NIR Exposure — Auto/Manual selector + analogue gain +
-    /// manual-exposure value (IEEE-754 float, microseconds).
+    /// manual-exposure value (IEEE-754 float, milliseconds).
     /// Payload (8 bytes):
     ///   [0]    1=Manual, 0=Auto
     ///   [1]    Analogue gain (default 4)
     ///   [2..5] Manual exposure as IEEE-754 single-precision, little-endian
     ///   [6][7] 0x00 0x00 (reserve)
     /// </summary>
-    public Task SendNirExposureAsync(bool manual, byte gain, float exposureUs)
-        => SendAsync(DeviceCommandId.NirExposure, BuildExposurePayload(manual, gain, exposureUs));
+    public Task SendNirExposureAsync(bool manual, byte gain, float exposureMs)
+        => SendAsync(DeviceCommandId.NirExposure, BuildExposurePayload(manual, gain, exposureMs));
 
     /// <summary>
     /// VIS Exposure — same payload shape as NIR exposure; addresses
     /// the visible-spectrum (RGB) sensor's auto-exposure controller.
     /// </summary>
-    public Task SendVisExposureAsync(bool manual, byte gain, float exposureUs)
-        => SendAsync(DeviceCommandId.VisExposure, BuildExposurePayload(manual, gain, exposureUs));
+    public Task SendVisExposureAsync(bool manual, byte gain, float exposureMs)
+        => SendAsync(DeviceCommandId.VisExposure, BuildExposurePayload(manual, gain, exposureMs));
 
-    private static byte[] BuildExposurePayload(bool manual, byte gain, float exposureUs)
+    private static byte[] BuildExposurePayload(bool manual, byte gain, float exposureMs)
     {
         // IEEE-754 single-precision, little-endian on x64 Windows + Linux.
         // (BitConverter.IsLittleEndian == true on every supported host.)
-        byte[] expBytes = BitConverter.GetBytes(exposureUs);
+        byte[] expBytes = BitConverter.GetBytes(exposureMs);
         return new byte[]
         {
             manual ? (byte)0x01 : (byte)0x00,
@@ -456,7 +556,8 @@ public sealed class DeviceSerialService : IDisposable
         => SendLrfNoptelAsync(
             cmdId: 0xCC,
             payload: new byte[] { measurementMode },
-            simSirsCmdId: DeviceCommandId.LrfRangeMeasurement);
+            simSirsCmdId: DeviceCommandId.LrfRangeMeasurement,
+            includeReserved: true);   // 0xCC frame carries 2 "Not used" bytes
 
     /// <summary>
     /// LRF Stop CMM — raw Noptel passthrough. Noptel "break" command 0xC6
@@ -466,23 +567,30 @@ public sealed class DeviceSerialService : IDisposable
         => SendLrfNoptelAsync(0xC6, EmptyPayload, DeviceCommandId.LrfStopCmm);
 
     /// <summary>
-    /// LRF Measurement Range — raw Noptel passthrough.
-    /// setValues=true  -> Noptel SET range command (0xCA + min/max LE pairs)
-    /// setValues=false -> Noptel GET range command (0xCD, no params)
-    /// Both command bytes are best-guess; verify against Noptel LRX ICD.
+    /// LRF Get Measurement Range — raw Noptel passthrough.
+    /// Noptel GET range command (0x30, no params). No reserve bytes.
     /// </summary>
-    public Task SendLrfMeasurementRangeAsync(bool setValues, ushort minMeters, ushort maxMeters)
+    public Task SendLrfGetRangeAsync()
+        => SendLrfNoptelAsync(0x30, EmptyPayload, DeviceCommandId.LrfMeasurementRange);
+
+    /// <summary>
+    /// LRF Set Minimum Range — raw Noptel passthrough.
+    /// Noptel SET MIN range command (0x31 + value as 2-byte LE). No reserve bytes.
+    /// </summary>
+    public Task SendLrfSetMinRangeAsync(ushort minMeters)
     {
-        if (setValues)
-        {
-            byte[] p =
-            {
-                (byte)(minMeters & 0xFF), (byte)(minMeters >> 8),
-                (byte)(maxMeters & 0xFF), (byte)(maxMeters >> 8),
-            };
-            return SendLrfNoptelAsync(0xCA, p, DeviceCommandId.LrfMeasurementRange);
-        }
-        return SendLrfNoptelAsync(0xCD, EmptyPayload, DeviceCommandId.LrfMeasurementRange);
+        byte[] p = { (byte)(minMeters & 0xFF), (byte)(minMeters >> 8) };
+        return SendLrfNoptelAsync(0x31, p, DeviceCommandId.LrfMeasurementRange);
+    }
+
+    /// <summary>
+    /// LRF Set Maximum Range — raw Noptel passthrough.
+    /// Noptel SET MAX range command (0x32 + value as 2-byte LE). No reserve bytes.
+    /// </summary>
+    public Task SendLrfSetMaxRangeAsync(ushort maxMeters)
+    {
+        byte[] p = { (byte)(maxMeters & 0xFF), (byte)(maxMeters >> 8) };
+        return SendLrfNoptelAsync(0x32, p, DeviceCommandId.LrfMeasurementRange);
     }
 
     // ── LRF send methods — RAW NOPTEL PASSTHROUGH ─────────────────────
@@ -557,19 +665,20 @@ public sealed class DeviceSerialService : IDisposable
     /// existing SimulateResponse pipeline can synthesise a structured
     /// response for the VM.
     /// </param>
-    private async Task SendLrfNoptelAsync(byte cmdId, byte[] payload, byte simSirsCmdId)
+    private async Task SendLrfNoptelAsync(byte cmdId, byte[] payload, byte simSirsCmdId,
+                                          bool includeReserved = false)
     {
         await _txLock.WaitAsync();
         try
         {
             byte seq = _seqId++;
-            byte[] packet = NoptelChecksum.BuildPacket(cmdId, payload);
+            byte[] packet = NoptelChecksum.BuildPacket(cmdId, payload, includeReserved);
 
             if (_simulationMode)
             {
                 Log("TX", $"SIM NOPTEL LRF [{BitConverter.ToString(packet)}]");
                 RawFrame?.Invoke(packet, true);
-                SimulateResponse(simSirsCmdId, seq);
+                SimulateResponse(simSirsCmdId, seq, DeviceFramer.SystemControllerDstId);
                 return;
             }
 
@@ -613,9 +722,26 @@ public sealed class DeviceSerialService : IDisposable
         => SendAsync(DeviceCommandId.Stream2Symbology,
                      [on ? (byte)0x01 : (byte)0x00]);
 
-    /// <summary>§3.3.16.1  IBIT Command</summary>
-    public Task SendIbitAsync()
-        => SendAsync(DeviceCommandId.Ibit, [0x55]);
+    /// <summary>
+    /// §3.3.16.1  IBIT Command. Payload [mode, 0x00] where
+    ///   mode 0x00 = Read previous results, 0x01 = Full IBIT,
+    ///   0x02 = Silent IBIT (sensors only).
+    /// </summary>
+    /// <summary>
+    /// §3.3.16 IBIT Control (0x23). RX payload = [Action, Reserve].
+    ///   Action 0x00 = Read progress, 0x01 = Full IBIT, 0x02 = Silent IBIT.
+    /// </summary>
+    public Task SendIbitAsync(byte mode = 0x01)
+    {
+        // A Full (0x01) or Silent (0x02) action begins a new test; reset the
+        // simulated progress ramp so it animates from 0 again.
+        if ((mode & 0x03) != 0x00) ResetSimIbit();
+        return SendAsync(DeviceCommandId.Ptsc.Ibit, [(byte)(mode & 0x03), 0x00], DeviceFramer.PtscDstId);
+    }
+
+    /// <summary>Poll IBIT progress/results (Action 0x00 = Read).</summary>
+    public Task SendIbitReadAsync()
+        => SendAsync(DeviceCommandId.Ptsc.Ibit, [0x00, 0x00], DeviceFramer.PtscDstId);
 
     // ── Maintenance: Start NUC on each sensor ─────────────────────────
     // Payload format (per the May 2026 NUC spec):
@@ -625,13 +751,25 @@ public sealed class DeviceSerialService : IDisposable
     // Length byte on the wire = 0x03. Routed to the System Controller
     // (default dst 0x10), which forwards to the appropriate sensor.
 
+    // Remember the most recent NUC type per sensor so the simulator can
+    // echo back the value that was actually requested (rather than a
+    // hard-coded constant). Defaults to 2 (2-Point).
+    private byte _lastRgbNucType = 2;
+    private byte _lastNirNucType = 2;
+
     /// <summary>Start NUC on the RGB sensor. Maintenance only.</summary>
     public Task SendRgbStartNucAsync(byte nucType)
-        => SendAsync(DeviceCommandId.RgbStartNuc, [nucType, 0x00, 0x00]);
+    {
+        _lastRgbNucType = nucType;
+        return SendAsync(DeviceCommandId.RgbStartNuc, [nucType, 0x00, 0x00]);
+    }
 
     /// <summary>Start NUC on the NIR sensor. Maintenance only.</summary>
     public Task SendNirStartNucAsync(byte nucType)
-        => SendAsync(DeviceCommandId.NirStartNuc, [nucType, 0x00, 0x00]);
+    {
+        _lastNirNucType = nucType;
+        return SendAsync(DeviceCommandId.NirStartNuc, [nucType, 0x00, 0x00]);
+    }
 
     // -----------------------------------------------------------------------
     // Shared send helpers
@@ -694,11 +832,25 @@ public sealed class DeviceSerialService : IDisposable
                 dstId,
                 DeviceFramer.HostSrcId);
 
+            // High-frequency controller motion frames (MotorSet / StabSet to
+            // the PTSC) would otherwise spam the Log and Raw Trace panels at the
+            // controller rate, churning UI bindings and spiking the CPU. Throttle
+            // their logging to ~4 Hz; all other commands always log.
+            bool isMotion = dstId == DeviceFramer.PtscDstId &&
+                            (commandId == DeviceCommandId.Ptsc.MotorSet ||
+                             commandId == DeviceCommandId.Ptsc.StabSet);
+            bool logThis = !isMotion ||
+                           (DateTime.UtcNow - _lastMotionLog).TotalMilliseconds >= 250;
+            if (isMotion && logThis) _lastMotionLog = DateTime.UtcNow;
+
             if (_simulationMode)
             {
-                Log("TX", $"SIM CMD 0x{commandId:X2} seq={seq} [{BitConverter.ToString(payload)}]");
-                RawFrame?.Invoke(frame, true);
-                SimulateResponse(commandId, seq);
+                if (logThis)
+                {
+                    Log("TX", $"SIM CMD 0x{commandId:X2} seq={seq} [{BitConverter.ToString(payload)}]");
+                    RawFrame?.Invoke(frame, true);
+                }
+                SimulateResponse(commandId, seq, dstId);
                 return;
             }
 
@@ -713,9 +865,17 @@ public sealed class DeviceSerialService : IDisposable
                 try
                 {
                     _transport!.Write(frame, 0, frame.Length);
-                    RawFrame?.Invoke(frame, true);
-                    Log("TX", $"CMD 0x{commandId:X2} seq={seq} attempt={attempt}");
-                    await Task.Delay(TimeoutMs);
+                    if (logThis)
+                    {
+                        RawFrame?.Invoke(frame, true);
+                        Log("TX", $"CMD 0x{commandId:X2} seq={seq} attempt={attempt}");
+                    }
+                    // Fire-and-forget motion frames (MotorSet / StabSet) expect no
+                    // reply, so we must NOT hold the TX lock for the response
+                    // timeout — doing so backs up the controller's frames and was
+                    // the root cause of commands queueing and the gimbal lagging.
+                    if (!isMotion)
+                        await Task.Delay(TimeoutMs);
                     break;
                 }
                 catch (TimeoutException)
@@ -736,15 +896,63 @@ public sealed class DeviceSerialService : IDisposable
     {
         try
         {
-            // Bytes arrive raw from whichever transport (UART chunk or UDP datagram);
-            // the framer handles partial / multi-frame buffers either way.
+            // Bytes arrive raw from whichever transport (UART chunk or UDP datagram).
             RawFrame?.Invoke(buf, false);
 
-            foreach (var frame in DeviceFramer.FeedBytes(buf, _rxBuf))
+            // The LRF (Noptel LRX) replies in its own framing, which is NOT a SIRS
+            // frame, so SIRS and Noptel replies can interleave on the same wire.
+            // Accumulate everything, then peel complete messages off the front,
+            // dispatching by the leading sync byte: 0x0A(+0x88) = SIRS, 0x59 = Noptel.
+            _rxBuf.AddRange(buf);
+
+            bool progress = true;
+            while (progress && _rxBuf.Count > 0)
             {
-                Log("RX", $"RSP 0x{frame.CommandId:X2} seq={frame.SequenceId}" +
-                           (frame.HasError ? $" ERR=0x{frame.ErrorCode:X4}" : ""));
-                ResponseReceived?.Invoke(frame);
+                progress = false;
+                byte lead = _rxBuf[0];
+
+                if (lead == NoptelChecksum.ResponseSyncByte)
+                {
+                    int consumed = TryExtractNoptelReply(_rxBuf);
+                    if (consumed > 0) { _rxBuf.RemoveRange(0, consumed); progress = true; }
+                    else break;   // need more bytes to complete the Noptel reply
+                }
+                else if (lead == 0x0A)
+                {
+                    // Feed the SIRS framer only the bytes up to the next Noptel
+                    // sync (0x59), so it never discards interleaved LRF replies
+                    // while hunting for its own sync.
+                    int nextNoptel = _rxBuf.IndexOf(NoptelChecksum.ResponseSyncByte);
+                    int take = nextNoptel < 0 ? _rxBuf.Count : nextNoptel;
+                    var sirsChunk = _rxBuf.GetRange(0, take).ToArray();
+
+                    bool any = false;
+                    foreach (var frame in DeviceFramer.FeedBytes(sirsChunk, _sirsBuf))
+                    {
+                        Log("RX", $"RSP 0x{frame.CommandId:X2} seq={frame.SequenceId}" +
+                                   (frame.HasError ? $" ERR=0x{frame.ErrorCode:X4}" : ""));
+                        ResponseReceived?.Invoke(frame);
+                        any = true;
+                    }
+
+                    // Rebuild _rxBuf as: (unconsumed SIRS tail) + (Noptel bytes we held back).
+                    var tail = new List<byte>(_sirsBuf);
+                    _sirsBuf.Clear();
+                    if (nextNoptel >= 0)
+                        tail.AddRange(_rxBuf.GetRange(take, _rxBuf.Count - take));
+                    _rxBuf.Clear();
+                    _rxBuf.AddRange(tail);
+
+                    if (any) progress = true;
+                    else if (nextNoptel > 0) progress = true;   // Noptel bytes await
+                    else break;   // incomplete SIRS frame, wait for more bytes
+                }
+                else
+                {
+                    // Unknown leading byte — drop one and resync.
+                    _rxBuf.RemoveAt(0);
+                    progress = true;
+                }
             }
         }
         catch (Exception ex)
@@ -753,13 +961,150 @@ public sealed class DeviceSerialService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Try to frame one Noptel LRX reply at the front of <paramref name="buf"/>.
+    /// Reply layout: [0x59 SYNC][cmdEcho][payload...][check], where
+    /// check = (sum of all preceding bytes) XOR 0x50.
+    ///
+    /// Length is not fixed per command and the ICD does not tabulate every
+    /// reply size, so we frame by checksum: try increasing end positions and
+    /// accept the shortest span whose trailing byte matches the computed check.
+    /// Returns the number of bytes consumed (0 if a complete, valid reply is
+    /// not yet available).
+    /// </summary>
+    private int TryExtractNoptelReply(List<byte> buf)
+    {
+        // Minimum reply = SYNC + cmdEcho + check = 3 bytes.
+        const int minLen = 3;
+        const int maxLen = 64;   // generous upper bound for any LRX reply
+        if (buf.Count < minLen) return 0;
+
+        int limit = Math.Min(buf.Count, maxLen);
+
+        // Minimum inner-payload length per command echo, to avoid a short
+        // false-positive checksum match inside a longer real reply.
+        byte echo = buf.Count > 1 ? buf[1] : (byte)0x00;
+        int minPayload = echo switch
+        {
+            0xCC => 18,   // range measurement: 3×(float32 range + u16 signal)
+            0xC7 => 29,   // status query
+            0xC2 => 24,   // diagnostics
+            0xC0 => 10,   // identification
+            0xDE => 1,    // optical crosstalk
+            _ => 0,       // acks (stop, pointer, baud, reset, set/get range)
+        };
+        int minEnd = Math.Max(minLen, 2 + minPayload + 1);   // SYNC+echo+payload+check
+
+        for (int end = minEnd; end <= limit; end++)
+        {
+            byte check = buf[end - 1];
+            byte calc = NoptelChecksum.Compute(System.Runtime.InteropServices.CollectionsMarshal
+                                               .AsSpan(buf)[..(end - 1)]);
+            if (check == calc)
+            {
+                // Valid frame [0..end-1]. Strip SYNC(0) + cmdEcho(1) ... check(end-1).
+                byte cmdEcho = buf[1];
+                int payloadLen = end - 3;            // exclude SYNC, cmdEcho, check
+                var payload = new byte[payloadLen < 0 ? 0 : payloadLen];
+                for (int i = 0; i < payload.Length; i++)
+                    payload[i] = buf[2 + i];
+                DispatchNoptelReply(cmdEcho, payload);
+                return end;
+            }
+        }
+
+        // No valid checksum within range. If we've buffered well beyond maxLen,
+        // drop the stale SYNC to avoid deadlock; otherwise wait for more bytes.
+        return buf.Count > maxLen ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Map a Noptel reply (command echo + inner payload) to the SIRS-equivalent
+    /// DeviceCommandId and raise ResponseReceived so the VM's existing switch
+    /// decodes it — exactly as the simulator path does.
+    /// </summary>
+    private void DispatchNoptelReply(byte cmdEcho, byte[] payload)
+    {
+        byte sirsCmd = cmdEcho switch
+        {
+            0xCC => DeviceCommandId.LrfRangeMeasurement,
+            0xC6 => DeviceCommandId.LrfStopCmm,
+            0x30 or 0x31 or 0x32 => DeviceCommandId.LrfMeasurementRange,
+            0xC7 => DeviceCommandId.LrfStatusQuery,
+            0xDE => DeviceCommandId.LrfOpticalCrosstalk,
+            0xC5 => DeviceCommandId.LrfAlignmentPointer,
+            0xC8 => DeviceCommandId.LrfBaudRate,
+            0xC0 => DeviceCommandId.LrfIdentification,
+            0xC2 => DeviceCommandId.LrfDiagnostics,
+            0xCB => DeviceCommandId.LrfResetErrorCounter,
+            _ => 0x00,
+        };
+        if (sirsCmd == 0x00)
+        {
+            Log("RX", $"NOPTEL LRF unknown reply cmd 0x{cmdEcho:X2} [{BitConverter.ToString(payload)}]");
+            return;
+        }
+
+        Log("RX", $"NOPTEL LRF reply cmd 0x{cmdEcho:X2} → 0x{sirsCmd:X2} " +
+                  $"[{BitConverter.ToString(payload)}]");
+
+        var frame = new DeviceParsedFrame
+        {
+            ProtocolVersion = DeviceFramer.ProtocolVer,
+            ErrorByte1 = 0x00,
+            ErrorByte2 = 0x00,
+            DestinationId = DeviceFramer.HostSrcId,
+            SourceId = DeviceFramer.SystemControllerDstId,
+            SequenceId = 0x00,
+            CommandId = sirsCmd,
+            Payload = payload,
+        };
+        ResponseReceived?.Invoke(frame);
+    }
+
     // -----------------------------------------------------------------------
     // Simulation – minimal loopback for UI development
     // -----------------------------------------------------------------------
 
-    private void SimulateResponse(byte commandId, byte seqId)
+    private void SimulateResponse(byte commandId, byte seqId, byte dstId)
     {
         var f = _faults;
+
+        // PTSC commands (dst 0x20) share command bytes with EOA commands
+        // (e.g. 0x09 = PTSC MotorSet vs MwirFovChange), so disambiguate by
+        // destination first. The simulated response is sourced from 0x20.
+        if (dstId == DeviceFramer.PtscDstId)
+        {
+            // MotorSet / StabSet are fire-and-forget motion commands — the
+            // hardware does not echo telemetry for them, and synthesising a
+            // response on every controller tick churns the UI bindings and
+            // spikes the CPU. Acknowledge silently (no ResponseReceived).
+            if (commandId == DeviceCommandId.Ptsc.MotorSet ||
+                commandId == DeviceCommandId.Ptsc.StabSet)
+                return;
+
+            byte[] ptscPayload = commandId switch
+            {
+                DeviceCommandId.Ptsc.GeneralStatusGet => BuildSimGeneralStatus(f),
+                DeviceCommandId.Ptsc.Ibit => BuildSimIbit(f),
+                DeviceCommandId.Ptsc.MotorStatusGet => BuildSimMotorStatus(),
+                DeviceCommandId.Ptsc.StabStatusGet => BuildSimStabStatus(),
+                _ => [0x00],
+            };
+            var ptscFrame = new DeviceParsedFrame
+            {
+                ProtocolVersion = DeviceFramer.ProtocolVer,
+                ErrorByte1 = 0x00,
+                ErrorByte2 = 0x00,
+                DestinationId = DeviceFramer.HostSrcId,
+                SourceId = DeviceFramer.PtscDstId,
+                SequenceId = seqId,
+                CommandId = commandId,
+                Payload = ptscPayload,
+            };
+            ResponseReceived?.Invoke(ptscFrame);
+            return;
+        }
 
         byte[] payload = commandId switch
         {
@@ -768,8 +1113,8 @@ public sealed class DeviceSerialService : IDisposable
 
             // NUC: echo back [nucType, 0x00, 0x00] as the ack so the VM's
             // response handler can flip the feedback label to "Started".
-            DeviceCommandId.RgbStartNuc or DeviceCommandId.NirStartNuc =>
-                new byte[] { 0x02, 0x00, 0x00 },
+            DeviceCommandId.RgbStartNuc => new byte[] { _lastRgbNucType, 0x00, 0x00 },
+            DeviceCommandId.NirStartNuc => new byte[] { _lastNirNucType, 0x00, 0x00 },
 
             // EOA-direct NIR FOV reply: 2-byte payload = [fov, reached?]
             0x84 =>
@@ -795,11 +1140,6 @@ public sealed class DeviceSerialService : IDisposable
             0x85 or DeviceCommandId.NirFocusChange or DeviceCommandId.MwirFocusChange =>
                 BuildSimFocus(f),
 
-            DeviceCommandId.PanTiltMotorControl => new byte[16],
-
-            DeviceCommandId.StabControl =>
-                [0x00, 0x00, 0x00],
-
             DeviceCommandId.VideoSourceSelection =>
                 [0x00, 0x00, 0x00],
 
@@ -820,8 +1160,6 @@ public sealed class DeviceSerialService : IDisposable
         // to PTSC, so their responses should appear to come from 0x20.
         byte simSrcId = commandId switch
         {
-            DeviceCommandId.PanTiltMotorControl => DeviceFramer.PtscDstId,
-            DeviceCommandId.StabControl => DeviceFramer.PtscDstId,
             0x84 or 0x85 => DeviceFramer.VisNirDstId,  // EOA-direct NIR FOV/Focus
             _ => DeviceFramer.SystemControllerDstId,
         };
@@ -844,100 +1182,161 @@ public sealed class DeviceSerialService : IDisposable
 
     private static byte[] BuildSimGeneralStatus(DeviceSimFaultConfig f)
     {
-        // §3.3.1.2  Length = 0x1D (29 payload bytes, indices 0-28)
-        var p = new byte[29];
+        // §3.3.1 General Status (SRS v2): 10-byte payload.
+        //   p[0] state + health bits, p[1] ADC/brake, p[2] pan motor,
+        //   p[3] tilt motor, p[4] control mode, p[5..6] bus voltage,
+        //   p[7..9] reserve.
+        var p = new byte[10];
 
-        // p[0] General Status Byte: bit0=power, bit1=fibre, bit2=IMU
-        if (f.PowerFailure) p[0] |= (1 << 0);
-        if (f.FibreError) p[0] |= (1 << 1);
-        if (f.ImuError) p[0] |= (1 << 2);
+        // p[0]: bits0-2 state; bit3 ready; bit4 IMU err; bit5 pan-enc err;
+        //       bit6 tilt-enc err; bit7 power fail.
+        byte state = (byte)(f.SystemStateError ? 0x03 : 0x00);   // 0=Op, 3=Error
+        p[0] = state;
+        if (!f.SystemStateError) p[0] |= 0x08;        // ready
+        if (f.ImuError) p[0] |= 0x10;
+        if (f.PowerFailure) p[0] |= 0x80;
 
-        // p[1] Laser Status: bit0=LRF, bit1=LPI
-        if (f.LrfNotSafe) p[1] |= (1 << 0);
-        if (f.LpiNotSafe) p[1] |= (1 << 1);
+        // p[1]: pan/tilt ADC, motor brake — all OK in sim.
+        // p[2]/p[3]: pan/tilt motor status (bit2 = fault).
+        if (f.PanMotorFault) p[2] |= 0x04;
+        if (f.TiltMotorFault) p[3] |= 0x04;
 
-        // p[2] System Operation Status: bits0:2=state
-        p[2] = (byte)(f.SystemStateError ? 0x03 : 0x00);  // 0=Op, 3=Error
+        // p[4]: control mode — Position (2) on both axes => bits = 0b1010 = 0x0A.
+        p[4] = 0x0A;
 
-        // p[3..6] Operational hours = 0
-
-        // p[7] Humidity/Pressure/Temp status
-        if (f.HumidityTriggered) p[7] |= (1 << 0);
-        if (f.PressureTriggered) p[7] |= (1 << 1);
-        if (f.TemperatureOutOfRange) p[7] |= (1 << 2);
-
-        // p[8..9]  Humidity % = 0
-        // p[10..13] Pressure psi = 0
-        // p[14..15] Temperature = 0
-        // p[16] MWIR NUC mode = 0
-
-        // p[17] MWIR calibration: bit0=cooler, bit4=motor fault
-        if (f.MwirCoolerBusy) p[17] |= (1 << 0);
-        if (f.MwirMotorFault) p[17] |= (1 << 4);
-
-        // p[18] NIR calibration: bit3=motor fault
-        if (f.NirMotorFault) p[18] |= (1 << 3);
-
-        // p[19] Pan motor: bit1=fault
-        if (f.PanMotorFault) p[19] |= (1 << 1);
-
-        // p[20] Tilt motor: bit1=fault
-        if (f.TiltMotorFault) p[20] |= (1 << 1);
-
-        // p[21..22] Last Error = 0
-        // p[23] LRF Status: bit0=fault
-        if (f.LrfFault) p[23] |= (1 << 0);
-
-        // p[24] LPI Status: bit0=fault
-        if (f.LpiFault) p[24] |= (1 << 0);
+        // p[5..6]: bus voltage raw ADC (example ~28V scaled count).
+        ushort busRaw = 2840;
+        p[5] = (byte)(busRaw & 0xFF);
+        p[6] = (byte)((busRaw >> 8) & 0xFF);
 
         return p;
     }
 
-    private static byte[] BuildSimIbit(DeviceSimFaultConfig f)
+    /// <summary>
+    /// Simulated §3.3 GET Stab Control response (52-byte payload). Uses the
+    /// provisional field layout in DeviceStabStatusResponse so the GUI decode
+    /// can be exercised without hardware.
+    /// </summary>
+    /// <summary>
+    /// Simulated Motor Status response (DevicePanTiltResponse layout):
+    ///   [0] panMode bit0, [1] tiltMode bit0,
+    ///   [2..5] pan angle int32 LE (milli-deg), [6..9] tilt angle int32 LE,
+    ///   [10..11] pan speed u16, [12..13] tilt speed u16.
+    /// Emits a non-zero sample so "Poll Motor" shows visible feedback in sim.
+    /// </summary>
+    private byte[] BuildSimMotorStatus()
     {
-        // §3.3.16.2  Length = 0x1E (30 payload bytes)
-        var p = new byte[30];
-
-        if (!f.IbitFailed) return p;  // all zeros = all pass
-
-        // p[0] General Status: power/fibre/IMU
-        p[0] = 0b00000111;   // Power FAIL | Fibre ERR | IMU ERR
-
-        // p[9..10] MWIR ZG1 fails
-        p[9] = 0b00111111;  // All 6 ZG1 motor tests fail
-
-        // p[11..12] MWIR ZG2 fails
-        p[11] = 0b01111111;  // All 7 ZG2 motor tests fail
-
-        // p[17] Pan motor fails, p[18] Tilt motor fails
-        p[17] = 0b00011111;  // Pan: all 5 tests fail
-        p[18] = 0b01111111;  // Tilt: all 7 tests fail
-
-        // p[22] Humidity OOR, p[25] Pressure OOR, p[30] Temp OOR
-        p[22] = 0x01;
-        if (p.Length > 25) p[25] = 0x01;
-
+        // §3.3.5 Motor Status (SRS v2 Table 19): 18-byte payload, echoing the
+        // last commanded Motor Control state so a sim poll reflects what was sent.
+        var p = new byte[18];
+        p[0] = _simPanCtrl;
+        p[1] = _simTiltCtrl;
+        WriteI32(p, 2, _simPanPosTicks);
+        WriteI32(p, 6, _simTiltPosTicks);
+        WriteI32(p, 10, _simPanSpdTicks);
+        WriteI32(p, 14, _simTiltSpdTicks);
         return p;
     }
 
-    private static byte[] BuildSimLrf(DeviceSimFaultConfig f)
+    private byte[] BuildSimStabStatus()
     {
-        // §3.3.11.2  Length = 0x15 (21 payload bytes)
-        var p = new byte[21];
-        if (f.LrfNoReturn)
+        var p = new byte[52];
+        // Uptime (u32) — reuse a small rolling value.
+        WriteI32(p, 0, Environment.TickCount / 1000);
+        // IMU status (u16) bit0 = OK.
+        p[4] = 0x01; p[5] = 0x00;
+        WriteF32(p, 6, 0.01f);    // Accel X
+        WriteF32(p, 10, -0.02f);  // Accel Y
+        WriteF32(p, 14, 9.81f);   // Accel Z (gravity)
+        WriteF32(p, 18, 0.0f);    // Gyro X
+        WriteF32(p, 22, 0.0f);    // Gyro Y
+        WriteF32(p, 26, 0.0f);    // Gyro Z
+        WriteF32(p, 30, 32.5f);   // Temperature °C
+        // Echo the last commanded EKF targets (sim state holds ticks → degrees).
+        WriteF32(p, 34, (float)(_simEkfPitch / TicksPerDegree));   // EKF Pitch
+        WriteF32(p, 38, (float)(_simEkfYaw / TicksPerDegree));     // EKF Yaw
+        WriteI32(p, 42, 0);       // Pan nudge
+        WriteI32(p, 46, 0);       // Tilt nudge
+        // p[50..51] reserve
+        return p;
+    }
+
+    // Sim-only IBIT progress state: advances on each Read poll to emulate the
+    // C2000 running the self-test, then reports 100% with (optionally) faults.
+    private int _simIbitProgress;
+    private DateTime _lastMotionLog = DateTime.MinValue;
+
+    // Sim-only mirror of the last commanded Motor Control state, so a simulated
+    // Motor Status (0x08) poll reflects what was last sent.
+    private byte _simPanCtrl = 0x04, _simTiltCtrl = 0x04;   // default Position, active
+    private int _simPanPosTicks, _simTiltPosTicks, _simPanSpdTicks, _simTiltSpdTicks;
+
+    private byte[] BuildSimIbit(DeviceSimFaultConfig f)
+    {
+        // §3.3.16 IBIT response (SRS v2): 11-byte payload.
+        //   p[0] status byte, p[1] progress %, p[2] pan, p[3] tilt,
+        //   p[4] sensor, p[5] pan-ext, p[6] tilt-ext, p[7..8] IMU, p[9..10] reserve.
+        var p = new byte[11];
+
+        _simIbitProgress = Math.Min(100, _simIbitProgress + 20);
+        p[1] = (byte)_simIbitProgress;
+
+        if (_simIbitProgress >= 100)
         {
-            // 0xFFFF = maximum out-of-range value for each range reading
-            for (int i = 0; i < 3; i++)
+            p[0] = f.IbitFailed ? (byte)0x04 : (byte)0x02;   // bit2 FAILED / bit1 PASSED
+            if (f.IbitFailed)
             {
-                p[1 + i * 6] = 0xFF;
-                p[2 + i * 6] = 0xFF;
+                p[2] = 0x01;   // Pan: motor-start fail (example)
+                p[4] = 0x01;   // Sensor: power fail (example)
             }
+            // IMU bytes use 1 = PASS.
+            p[7] = f.IbitFailed ? (byte)0x00 : (byte)0xFF;
+            p[8] = f.IbitFailed ? (byte)0x00 : (byte)0x03;
+        }
+        else
+        {
+            p[0] = 0x01;       // test in progress
+            p[7] = 0xFF; p[8] = 0x03;
         }
         return p;
     }
 
+    /// <summary>Reset sim IBIT progress when a new Full/Silent test starts.</summary>
+    private void ResetSimIbit() => _simIbitProgress = 0;
+
+    private static byte[] BuildSimLrf(DeviceSimFaultConfig f)
+    {
+        // Range reply payload (sync + cmd stripped): 18 bytes
+        //   [0..3] Range1 float32 LE (m), [4..5] Sig1, [6..9] Range2, ...
+        var p = new byte[18];
+        if (f.LrfNoReturn)
+            return p;   // all zero → ranges decode to 0 (no return)
+
+        void WriteRange(int rangeIdx, float metres, ushort signalMs)
+        {
+            int off = rangeIdx * 6;
+            WriteF32(p, off, metres);                    // IEEE-754 LE float32
+            p[off + 4] = (byte)(signalMs & 0xFF);
+            p[off + 5] = (byte)((signalMs >> 8) & 0xFF);
+        }
+        WriteRange(0, 1234.5f, 120);
+        WriteRange(1, 2500.0f, 95);
+        WriteRange(2, 0.0f, 0);
+        return p;
+    }
+
     // -----------------------------------------------------------------------
+
+    private static void WriteI32(byte[] buf, int off, int v)
+    {
+        buf[off] = (byte)(v & 0xFF);
+        buf[off + 1] = (byte)((v >> 8) & 0xFF);
+        buf[off + 2] = (byte)((v >> 16) & 0xFF);
+        buf[off + 3] = (byte)((v >> 24) & 0xFF);
+    }
+
+    private static void WriteF32(byte[] buf, int off, float v)
+        => WriteI32(buf, off, (int)BitConverter.SingleToUInt32Bits(v));
 
     private void Log(string src, string msg)
         => LogMessage?.Invoke($"{System.DateTime.Now:HH:mm:ss.fff}  {src,-4}  {msg}");
